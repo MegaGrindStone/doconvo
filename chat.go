@@ -57,7 +57,7 @@ func (m mainModel) initChat() mainModel {
 		glamour.WithWordWrap(0),
 	)
 
-	m.aiResponses = make(chan aiResponseMsg)
+	m.llmResponses = make(chan llmResponseMsg)
 
 	return m
 }
@@ -134,14 +134,14 @@ func (m mainModel) handleChatEvents(msg tea.Msg) (mainModel, tea.Cmd) {
 		}
 	case spinner.TickMsg:
 		if !m.chatIsThinking {
-			// Stop the spinner if the AI is not thinking anymore
+			// Stop the spinner if the LLM is not thinking anymore
 			return m, nil
 		}
 		// Updating the spinner here would cause the spinner to tick again
 		var cmd tea.Cmd
 		m.chatSpinner, cmd = m.chatSpinner.Update(msg)
 		return m.updateChatSize(), cmd
-	case aiResponseMsg:
+	case llmResponseMsg:
 		return m.handleChatsResponse(msg)
 	}
 
@@ -157,7 +157,7 @@ func (m mainModel) handleChatEvents(msg tea.Msg) (mainModel, tea.Cmd) {
 	return m, tea.Batch(cmds...)
 }
 
-func (m mainModel) handleChatsResponse(msg aiResponseMsg) (mainModel, tea.Cmd) {
+func (m mainModel) handleChatsResponse(msg llmResponseMsg) (mainModel, tea.Cmd) {
 	selectedSession := m.sessions[m.selectedSessionIndex]
 
 	if msg.chatIndex == len(selectedSession.Chats) {
@@ -170,7 +170,7 @@ func (m mainModel) handleChatsResponse(msg aiResponseMsg) (mainModel, tea.Cmd) {
 	if msg.err != nil {
 		if !errors.Is(msg.err, context.Canceled) {
 			selectedSession.Chats[len(selectedSession.Chats)-1].
-				Content = "Sorry, I'm having trouble connecting to the AI. Please try again later."
+				Content = "Sorry, I'm having trouble connecting to the LLM. Please try again later."
 			selectedSession.Chats[len(selectedSession.Chats)-1].Failed = true
 		}
 		m.sessions[m.selectedSessionIndex] = selectedSession
@@ -196,18 +196,18 @@ func (m mainModel) handleChatsResponse(msg aiResponseMsg) (mainModel, tea.Cmd) {
 		if selectedSession.Name == "" {
 			sessionIndex := m.selectedSessionIndex
 			cmd = func() tea.Msg {
-				name, err := generateSessionTitle(context.Background(), m.genTitleAI, selectedSession.Chats)
+				name, err := generateSessionTitle(context.Background(), m.genTitleLLM, selectedSession.Chats)
 				if err != nil {
-					return aiResponseTitleMsg{
+					return llmResponseTitleMsg{
 						err: fmt.Errorf("error generating session title: %w", err),
 					}
 				}
 				if name == "" {
-					return aiResponseTitleMsg{
+					return llmResponseTitleMsg{
 						err: fmt.Errorf("empty title generated"),
 					}
 				}
-				return aiResponseTitleMsg{
+				return llmResponseTitleMsg{
 					title:        name,
 					sessionIndex: sessionIndex,
 				}
@@ -224,7 +224,7 @@ func (m mainModel) handleChatsResponse(msg aiResponseMsg) (mainModel, tea.Cmd) {
 	return m.updateChatSize(), tea.Batch(cmds...)
 }
 
-func (m mainModel) handleChatsResponseTitle(msg aiResponseTitleMsg) mainModel {
+func (m mainModel) handleChatsResponseTitle(msg llmResponseTitleMsg) mainModel {
 	if msg.err != nil {
 		m.err = msg.err
 		return m.updateChatSize()
@@ -282,9 +282,9 @@ func (m mainModel) sendChat() (mainModel, tea.Cmd) {
 		var ragDocs []chromem.Result
 
 		for _, doc := range m.documents {
-			rds, err := doc.retrieve(m.vectordb, msg, m.embedderAI.embeddingFunc())
+			rds, err := doc.retrieve(m.vectordb, msg, m.embedderLLM.embeddingFunc())
 			if err != nil {
-				m.aiResponses <- aiResponseMsg{
+				m.llmResponses <- llmResponseMsg{
 					chatIndex: index,
 					err:       err,
 				}
@@ -303,25 +303,25 @@ func (m mainModel) sendChat() (mainModel, tea.Cmd) {
 			Content: ragPrompt,
 		})
 
-		res := m.convoAI.chatStream(ctx, cs)
+		res := m.convoLLM.chatStream(ctx, cs)
 
 		for r := range res {
 			if r.err != nil {
-				m.aiResponses <- aiResponseMsg{
+				m.llmResponses <- llmResponseMsg{
 					chatIndex: index,
 					err:       r.err,
 				}
 				return
 			}
 
-			m.aiResponses <- aiResponseMsg{
+			m.llmResponses <- llmResponseMsg{
 				chatIndex:  index,
 				content:    r.content,
 				isThinking: false,
 			}
 		}
 
-		m.aiResponses <- aiResponseMsg{
+		m.llmResponses <- llmResponseMsg{
 			done: true,
 		}
 	}(len(selectedSession.Chats))
@@ -338,7 +338,7 @@ func (c chat) displayName() string {
 		return "You"
 	}
 	if c.Role == roleAssistant {
-		return "AI"
+		return "Assistant"
 	}
 
 	return "System"

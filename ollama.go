@@ -64,7 +64,7 @@ func newOllawaWithModel(model string) *ollama {
 	return o
 }
 
-func (o *ollama) chat(ctx context.Context, chats []chat) aiResponse {
+func (o *ollama) chat(ctx context.Context, chats []chat) llmResponse {
 	msgs := make([]ollamaChatMessage, len(chats))
 	for i, chat := range chats {
 		msgs[i] = ollamaChatMessage{
@@ -81,14 +81,14 @@ func (o *ollama) chat(ctx context.Context, chats []chat) aiResponse {
 
 	jsonBody, err := json.Marshal(reqBody)
 	if err != nil {
-		return aiResponse{
+		return llmResponse{
 			err: fmt.Errorf("error marshaling request: %w", err),
 		}
 	}
 
 	req, err := http.NewRequestWithContext(ctx, "POST", o.host+"/api/chat", bytes.NewBuffer(jsonBody))
 	if err != nil {
-		return aiResponse{
+		return llmResponse{
 			err: fmt.Errorf("error creating request: %w", err),
 		}
 	}
@@ -97,7 +97,7 @@ func (o *ollama) chat(ctx context.Context, chats []chat) aiResponse {
 
 	resp, err := o.client.Do(req)
 	if err != nil {
-		return aiResponse{
+		return llmResponse{
 			err: fmt.Errorf("error sending request: %w", err),
 		}
 	}
@@ -105,25 +105,25 @@ func (o *ollama) chat(ctx context.Context, chats []chat) aiResponse {
 
 	if resp.StatusCode != http.StatusOK {
 		body, _ := io.ReadAll(resp.Body)
-		return aiResponse{
+		return llmResponse{
 			err: fmt.Errorf("unexpected status code: %d, body: %s", resp.StatusCode, string(body)),
 		}
 	}
 
 	var response ollamaChatResponse
 	if err := json.NewDecoder(resp.Body).Decode(&response); err != nil {
-		return aiResponse{
+		return llmResponse{
 			err: fmt.Errorf("error decoding response: %w", err),
 		}
 	}
 
-	return aiResponse{
+	return llmResponse{
 		content: response.Message.Content,
 	}
 }
 
-func (o *ollama) chatStream(ctx context.Context, chats []chat) <-chan aiResponse {
-	responseChan := make(chan aiResponse)
+func (o *ollama) chatStream(ctx context.Context, chats []chat) <-chan llmResponse {
+	responseChan := make(chan llmResponse)
 
 	go func() {
 		defer close(responseChan)
@@ -144,7 +144,7 @@ func (o *ollama) chatStream(ctx context.Context, chats []chat) <-chan aiResponse
 
 		jsonBody, err := json.Marshal(reqBody)
 		if err != nil {
-			responseChan <- aiResponse{
+			responseChan <- llmResponse{
 				err: fmt.Errorf("error marshaling request: %w", err),
 			}
 			return
@@ -152,7 +152,7 @@ func (o *ollama) chatStream(ctx context.Context, chats []chat) <-chan aiResponse
 
 		req, err := http.NewRequestWithContext(ctx, "POST", o.host+"/api/chat", bytes.NewBuffer(jsonBody))
 		if err != nil {
-			responseChan <- aiResponse{
+			responseChan <- llmResponse{
 				err: fmt.Errorf("error creating request: %w", err),
 			}
 			return
@@ -165,7 +165,7 @@ func (o *ollama) chatStream(ctx context.Context, chats []chat) <-chan aiResponse
 			if errors.Is(err, context.Canceled) {
 				return
 			}
-			responseChan <- aiResponse{
+			responseChan <- llmResponse{
 				err: fmt.Errorf("error sending request: %w", err),
 			}
 			return
@@ -174,7 +174,7 @@ func (o *ollama) chatStream(ctx context.Context, chats []chat) <-chan aiResponse
 
 		if resp.StatusCode != http.StatusOK {
 			body, _ := io.ReadAll(resp.Body)
-			responseChan <- aiResponse{
+			responseChan <- llmResponse{
 				err: fmt.Errorf("unexpected status code: %d, body: %s", resp.StatusCode, string(body)),
 			}
 			return
@@ -190,13 +190,13 @@ func (o *ollama) chatStream(ctx context.Context, chats []chat) <-chan aiResponse
 				if errors.Is(err, context.Canceled) {
 					return
 				}
-				responseChan <- aiResponse{
+				responseChan <- llmResponse{
 					err: fmt.Errorf("error decoding response: %w", err),
 				}
 				return
 			}
 
-			responseChan <- aiResponse{
+			responseChan <- llmResponse{
 				content: streamResp.Message.Content,
 			}
 

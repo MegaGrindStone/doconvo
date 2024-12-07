@@ -473,7 +473,7 @@ func (m mainModel) scanDocument() mainModel {
 		docName := doc.Name
 
 		coll, err := m.vectordb.CreateCollection(collName,
-			map[string]string{"docName": docName}, m.embedderAI.embeddingFunc())
+			map[string]string{"docName": docName}, m.embedderLLM.embeddingFunc())
 		if err != nil {
 			m.documentScanProgress <- documentScanLogMsg{
 				content: fmt.Sprintf("Error creating collection: %s", err),

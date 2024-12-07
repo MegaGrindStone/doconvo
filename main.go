@@ -26,11 +26,11 @@ type mainModel struct {
 	db       *bolt.DB
 	vectordb *chromem.DB
 
-	convoAI    ai
-	genTitleAI ai
-	embedderAI ai
+	convoLLM    llm
+	genTitleLLM llm
+	embedderLLM llm
 
-	aiResponses            chan aiResponseMsg
+	llmResponses           chan llmResponseMsg
 	chatCancelFunc         context.CancelFunc
 	documentScanProgress   chan documentScanLogMsg
 	documentScanCancelFunc context.CancelFunc
@@ -116,8 +116,8 @@ func main() {
 	p := tea.NewProgram(m)
 
 	go func() {
-		for msg := range m.aiResponses {
-			p.Send(aiResponseMsg(msg))
+		for msg := range m.llmResponses {
+			p.Send(llmResponseMsg(msg))
 		}
 	}()
 
@@ -138,10 +138,10 @@ func newMainModel(db *bolt.DB, vectordb *chromem.DB) (mainModel, error) {
 		db:       db,
 		vectordb: vectordb,
 	}
-	ais := loadAI()
-	m.convoAI = ais[convoName]
-	m.genTitleAI = ais[titleGenName]
-	m.embedderAI = ais[embedderName]
+	llms := loadLLM()
+	m.convoLLM = llms[convoName]
+	m.genTitleLLM = llms[titleGenName]
+	m.embedderLLM = llms[embedderName]
 
 	m.keymap = newKeymap()
 
@@ -178,7 +178,7 @@ func (m mainModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if key.Matches(msg, m.keymap.quit) {
 			return m, tea.Quit
 		}
-	case aiResponseTitleMsg:
+	case llmResponseTitleMsg:
 		// We put this handler here because this title generation message might
 		// be received when viewState is not viewStateChat.
 		return m.handleChatsResponseTitle(msg), nil

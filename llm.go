@@ -6,12 +6,12 @@ import (
 	"github.com/philippgille/chromem-go"
 )
 
-type aiResponse struct {
+type llmResponse struct {
 	content string
 	err     error
 }
 
-type aiResponseMsg struct {
+type llmResponseMsg struct {
 	chatIndex  int
 	content    string
 	isThinking bool
@@ -19,15 +19,15 @@ type aiResponseMsg struct {
 	done       bool
 }
 
-type aiResponseTitleMsg struct {
+type llmResponseTitleMsg struct {
 	title        string
 	sessionIndex int
 	err          error
 }
 
-type ai interface {
-	chat(context.Context, []chat) aiResponse
-	chatStream(context.Context, []chat) <-chan aiResponse
+type llm interface {
+	chat(context.Context, []chat) llmResponse
+	chatStream(context.Context, []chat) <-chan llmResponse
 	embeddingFunc() chromem.EmbeddingFunc
 }
 
@@ -37,16 +37,16 @@ const (
 	embedderName = "embedder"
 )
 
-func loadAI() map[string]ai {
+func loadLLM() map[string]llm {
 	o := newOllama()
-	return map[string]ai{
+	return map[string]llm{
 		convoName:    o,
 		titleGenName: o,
 		embedderName: newOllawaWithModel("nomic-embed-text"),
 	}
 }
 
-func generateSessionTitle(ctx context.Context, ai ai, chats []chat) (string, error) {
+func generateSessionTitle(ctx context.Context, llm llm, chats []chat) (string, error) {
 	cs := []chat{
 		{
 			Role: roleSystem,
@@ -84,7 +84,7 @@ Based on this conversation, create a clear and concise title that captures its m
     `,
 	})
 
-	res := ai.chat(ctx, cs)
+	res := llm.chat(ctx, cs)
 	if res.err != nil {
 		return "", res.err
 	}
