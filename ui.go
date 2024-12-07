@@ -6,8 +6,26 @@ import (
 
 	"github.com/charmbracelet/bubbles/key"
 	"github.com/charmbracelet/bubbles/list"
+	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/huh"
 	"github.com/charmbracelet/lipgloss"
 )
+
+// formFilePicker wraps a huh.FilePicker.
+//
+// We need this to override the KeyBinds method which determines what keys is shown
+// in the help view.
+type formFilePicker struct {
+	*huh.FilePicker
+	km huh.FilePickerKeyMap
+}
+
+func newFormFilePicker(fp *huh.FilePicker, km huh.FilePickerKeyMap) formFilePicker {
+	return formFilePicker{
+		FilePicker: fp,
+		km:         km,
+	}
+}
 
 func defaultList(title string, km keymap, shortHelps, fullHelps func() []key.Binding) list.Model {
 	l := list.New([]list.Item{}, listDelegate(), 0, 0)
@@ -127,3 +145,18 @@ var (
 			PaddingLeft(1).
 			PaddingRight(1)
 )
+
+func (f formFilePicker) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+	filePicker, cmd := f.FilePicker.Update(msg)
+	if fp, ok := filePicker.(*huh.FilePicker); ok {
+		f.FilePicker = fp
+	}
+
+	return f, cmd
+}
+
+func (f formFilePicker) KeyBinds() []key.Binding {
+	f.km.Select.SetEnabled(true)
+	f.km.Back.SetEnabled(true)
+	return []key.Binding{f.km.Open, f.km.Back, f.km.Select, f.km.Close, f.km.Prev, f.km.Next}
+}

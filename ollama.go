@@ -9,6 +9,9 @@ import (
 	"io"
 	"net/http"
 	"os"
+	"sync"
+
+	"github.com/philippgille/chromem-go"
 )
 
 type ollama struct {
@@ -35,6 +38,10 @@ type ollamaChatResponse struct {
 	Done    bool              `json:"done"`
 }
 
+type ollamaEmbedResponse struct {
+	Embeddings [][]float32 `json:"embeddings"`
+}
+
 const (
 	defaultOllamaHost = "http://127.0.0.1:11434"
 )
@@ -49,6 +56,12 @@ func newOllama() *ollama {
 		client: &http.Client{},
 		model:  "llama3.2",
 	}
+}
+
+func newOllawaWithModel(model string) *ollama {
+	o := newOllama()
+	o.model = model
+	return o
 }
 
 func (o *ollama) chat(ctx context.Context, chats []chat) aiResponse {
@@ -194,4 +207,81 @@ func (o *ollama) chatStream(ctx context.Context, chats []chat) <-chan aiResponse
 	}()
 
 	return responseChan
+}
+
+// embeddingFunc returns an EmbeddingFunc that uses the OpenAI API to generate
+// embeddings for the given text.
+//
+// This codes is taken directly from the chromem-go library, with a little modification,
+// to make it work to the newer ollama embedding API.
+func (c *ollama) embeddingFunc() chromem.EmbeddingFunc {
+	var checkedNormalized bool
+	checkNormalized := sync.Once{}
+
+	return func(ctx context.Context, text string) ([]float32, error) {
+		// Prepare the request body.
+		reqBody, err := json.Marshal(map[string]string{
+			"model": c.model,
+			"input": text, // new ollama API uses "input" instead of "prompt"
+		})
+		if err != nil {
+			return nil, fmt.Errorf("couldn't marshal request body: %w", err)
+		}
+
+		// Create the request. Creating it with context is important for a timeout
+		// to be possible, because the client is configured without a timeout.
+		// Newer ollama API uses /embed instead of /embeddings.
+		req, err := http.NewRequestWithContext(ctx, "POST", c.host+"/api/embed", bytes.NewBuffer(reqBody))
+		if err != nil {
+			return nil, fmt.Errorf("couldn't create request: %w", err)
+		}
+		req.Header.Set("Content-Type", "application/json")
+
+		// Send the request.
+		resp, err := c.client.Do(req)
+		if err != nil {
+			return nil, fmt.Errorf("couldn't send request: %w", err)
+		}
+		defer resp.Body.Close()
+
+		// Check the response status.
+		if resp.StatusCode != http.StatusOK {
+			return nil, errors.New("error response from the embedding API: " + resp.Status)
+		}
+
+		// Read and decode the response body.
+		body, err := io.ReadAll(resp.Body)
+		if err != nil {
+			return nil, fmt.Errorf("couldn't read response body: %w", err)
+		}
+		var embeddingResponse ollamaEmbedResponse
+		err = json.Unmarshal(body, &embeddingResponse)
+		if err != nil {
+			return nil, fmt.Errorf("couldn't unmarshal response body: %w", err)
+		}
+
+		// Check if the response contains embeddings.
+		if len(embeddingResponse.Embeddings) == 0 {
+			return nil, errors.New("no embeddings found in the response")
+		}
+		// In the newer ollama API, the request can take multiple inputs, and the response can contain multiple embeddings.
+		// We only want the first embedding, so we take the first element of the array.
+		if len(embeddingResponse.Embeddings[0]) == 0 {
+			return nil, errors.New("no embeddings found in the response")
+		}
+
+		v := embeddingResponse.Embeddings[0]
+		checkNormalized.Do(func() {
+			if isNormalized(v) {
+				checkedNormalized = true
+			} else {
+				checkedNormalized = false
+			}
+		})
+		if !checkedNormalized {
+			v = normalizeVector(v)
+		}
+
+		return v, nil
+	}
 }

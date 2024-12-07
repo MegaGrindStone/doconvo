@@ -6,6 +6,7 @@ import (
 	"log"
 	"os"
 	"path/filepath"
+	"time"
 
 	"github.com/charmbracelet/bubbles/help"
 	"github.com/charmbracelet/bubbles/key"
@@ -15,16 +16,24 @@ import (
 	"github.com/charmbracelet/bubbles/viewport"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/glamour"
+	"github.com/charmbracelet/huh"
 	"github.com/charmbracelet/lipgloss"
+	"github.com/philippgille/chromem-go"
 	bolt "go.etcd.io/bbolt"
 )
 
 type mainModel struct {
-	db             *bolt.DB
-	convoAI        ai
-	genTitleAI     ai
-	aiResponses    chan aiResponseMsg
-	chatCancelFunc context.CancelFunc
+	db       *bolt.DB
+	vectordb *chromem.DB
+
+	convoAI    ai
+	genTitleAI ai
+	embedderAI ai
+
+	aiResponses            chan aiResponseMsg
+	chatCancelFunc         context.CancelFunc
+	documentScanProgress   chan documentScanLogMsg
+	documentScanCancelFunc context.CancelFunc
 
 	sessionList list.Model
 
@@ -33,15 +42,27 @@ type mainModel struct {
 	chatSpinner    spinner.Model
 	chatTextArea   textarea.Model
 
+	optionsList list.Model
+
+	documentsList        list.Model
+	documentForm         *huh.Form
+	documentScanViewport viewport.Model
+
 	helpModel help.Model
 
-	sessions             []session
-	selectedSessionIndex int
-	chatIsThinking       bool
+	sessions              []session
+	selectedSessionIndex  int
+	chatIsThinking        bool
+	documents             []document
+	selectedDocumentIndex int
+	documentScanLogs      []string
+	documentScanStartTime time.Time
 
-	keymap keymap
-	width  int
-	height int
+	keymap             keymap
+	width              int
+	height             int
+	documentFormWidth  int
+	documentFormHeight int
 
 	viewState viewState
 	err       error
@@ -52,20 +73,25 @@ type viewState int
 const (
 	viewStateSessions viewState = iota
 	viewStateChat
+	viewStateOptions
+	viewStateDocuments
+	viewStateDocumentForm
+	viewStateDocumentScan
 )
 
 func main() {
 	cfgDir, err := os.UserConfigDir()
 	if err != nil {
-		log.Fatal(fmt.Errorf("error getting user config dir: %w", err))
+		log.Fatal(fmt.Errorf("error getting user option dir: %w", err))
 	}
 
 	cfgPath := filepath.Join(cfgDir, "/doconvo")
 	if err := os.MkdirAll(cfgPath, 0755); err != nil {
-		log.Fatal(fmt.Errorf("error creating config directory: %w", err))
+		log.Fatal(fmt.Errorf("error creating option directory: %w", err))
 	}
 
 	dbPath := filepath.Join(cfgDir, "/doconvo/doconvo.db")
+	vectordbPath := filepath.Join(cfgDir, "/doconvo/vectordb")
 
 	db, err := bolt.Open(dbPath, 0600, nil)
 	if err != nil {
@@ -77,7 +103,12 @@ func main() {
 		log.Fatal(fmt.Errorf("error initializing kvdb: %w", err))
 	}
 
-	m, err := newMainModel(db)
+	vectordb, err := chromem.NewPersistentDB(vectordbPath, false)
+	if err != nil {
+		log.Fatal(fmt.Errorf("error opening vector database: %w", err))
+	}
+
+	m, err := newMainModel(db, vectordb)
 	if err != nil {
 		log.Fatal(fmt.Errorf("error initializing model: %w", err))
 	}
@@ -90,28 +121,44 @@ func main() {
 		}
 	}()
 
+	go func() {
+		for msg := range m.documentScanProgress {
+			p.Send(documentScanLogMsg(msg))
+		}
+	}()
+
 	if _, err := p.Run(); err != nil {
 		fmt.Println("Error running program:", err)
 		os.Exit(1)
 	}
 }
 
-func newMainModel(db *bolt.DB) (mainModel, error) {
+func newMainModel(db *bolt.DB, vectordb *chromem.DB) (mainModel, error) {
 	m := mainModel{
-		db: db,
+		db:       db,
+		vectordb: vectordb,
 	}
 	ais := loadAI()
 	m.convoAI = ais[convoName]
 	m.genTitleAI = ais[titleGenName]
+	m.embedderAI = ais[embedderName]
 
 	m.keymap = newKeymap()
 
 	var err error
+
 	m, err = m.initSessions()
 	if err != nil {
 		return m, fmt.Errorf("error initializing sessions: %w", err)
 	}
 	m = m.initChat()
+	m = m.initOptions()
+
+	m, err = m.initDocuments()
+	if err != nil {
+		return m, fmt.Errorf("error initializing documents: %w", err)
+	}
+	m = m.initDocumentScan()
 
 	m.helpModel = help.New()
 
@@ -144,6 +191,14 @@ func (m mainModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m, cmd = m.handleSessionsEvents(msg)
 	case viewStateChat:
 		m, cmd = m.handleChatEvents(msg)
+	case viewStateOptions:
+		m, cmd = m.handleOptionsEvents(msg)
+	case viewStateDocuments:
+		m, cmd = m.handleDocumentsEvents(msg)
+	case viewStateDocumentForm:
+		m, cmd = m.handleDocumentFormEvents(msg)
+	case viewStateDocumentScan:
+		m, cmd = m.handleDocumentScanEvents(msg)
 	}
 
 	return m, cmd
@@ -157,6 +212,14 @@ func (m mainModel) View() string {
 		vs = append(vs, m.sessionsView())
 	case viewStateChat:
 		vs = append(vs, m.chatView())
+	case viewStateOptions:
+		vs = append(vs, m.optionsView())
+	case viewStateDocuments:
+		vs = append(vs, m.documentsView())
+	case viewStateDocumentForm:
+		vs = append(vs, m.documentFormView())
+	case viewStateDocumentScan:
+		vs = append(vs, m.documentScanView())
 	default:
 		m.err = fmt.Errorf("unknown view state %d", m.viewState)
 	}

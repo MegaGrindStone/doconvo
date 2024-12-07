@@ -8,12 +8,17 @@ import (
 )
 
 const (
-	sessionsBucket = "sessions"
+	sessionsBucket  = "sessions"
+	documentsBucket = "documents"
 )
 
 func initKVDB(db *bolt.DB) error {
 	return db.Update(func(tx *bolt.Tx) error {
 		_, err := tx.CreateBucketIfNotExists([]byte(sessionsBucket))
+		if err != nil {
+			return err
+		}
+		_, err = tx.CreateBucketIfNotExists([]byte(documentsBucket))
 		if err != nil {
 			return err
 		}
@@ -66,10 +71,60 @@ func deleteSession(db *bolt.DB, id int) error {
 	})
 }
 
+func loadDocuments(db *bolt.DB) ([]document, error) {
+	var documents []document
+
+	err := db.View(func(tx *bolt.Tx) error {
+		b := tx.Bucket([]byte(documentsBucket))
+
+		return b.ForEach(func(k, v []byte) error {
+			doc, err := decodeDocument(v)
+			if err != nil {
+				return err
+			}
+			documents = append(documents, *doc)
+			return nil
+		})
+	})
+
+	return documents, err
+}
+
+func saveDocument(db *bolt.DB, doc *document) error {
+	return db.Update(func(tx *bolt.Tx) error {
+		b := tx.Bucket([]byte(documentsBucket))
+
+		if doc.ID == 0 {
+			id, _ := b.NextSequence()
+			doc.ID = int(id)
+		}
+
+		data, err := json.Marshal(doc)
+		if err != nil {
+			return err
+		}
+
+		return b.Put(itob(doc.ID), data)
+	})
+}
+
+func deleteDocument(db *bolt.DB, id int) error {
+	return db.Update(func(tx *bolt.Tx) error {
+		b := tx.Bucket([]byte(documentsBucket))
+		return b.Delete(itob(id))
+	})
+}
+
 func decodeSession(data []byte) (*session, error) {
 	var s session
 	err := json.Unmarshal(data, &s)
 	return &s, err
+}
+
+func decodeDocument(data []byte) (*document, error) {
+	var d document
+	err := json.Unmarshal(data, &d)
+	return &d, err
 }
 
 func itob(v int) []byte {

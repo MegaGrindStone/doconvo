@@ -4,19 +4,22 @@ import (
 	"github.com/charmbracelet/bubbles/key"
 	"github.com/charmbracelet/bubbles/textarea"
 	"github.com/charmbracelet/bubbles/viewport"
+	"github.com/charmbracelet/huh"
 )
 
 type keymap struct {
 	listKeymap
 
-	chatViewportKeymap viewport.KeyMap
-	chatTextAreaKeymap textarea.KeyMap
+	textAreaKeymap textarea.KeyMap
+	viewportKeymap viewport.KeyMap
+	formKeymap     *huh.KeyMap
 
 	submit    key.Binding
 	openHelp  key.Binding
 	closeHelp key.Binding
 	quit      key.Binding
 	escape    key.Binding
+	option    key.Binding
 
 	viewState viewState
 }
@@ -29,9 +32,10 @@ type listKeymap struct {
 
 func newKeymap() keymap {
 	return keymap{
-		listKeymap:         newListKeymap(),
-		chatViewportKeymap: newChatViewportKeymap(),
-		chatTextAreaKeymap: newChatTextAreaKeymap(),
+		listKeymap:     newListKeymap(),
+		textAreaKeymap: newTextAreaKeymap(),
+		viewportKeymap: newViewportKeymap(),
+		formKeymap:     newFormKeymap(),
 		submit: key.NewBinding(
 			key.WithKeys("ctrl+s"),
 			key.WithHelp("ctrl+s", "submit"),
@@ -51,6 +55,10 @@ func newKeymap() keymap {
 		escape: key.NewBinding(
 			key.WithKeys("esc"),
 			key.WithHelp("esc", "back"),
+		),
+		option: key.NewBinding(
+			key.WithKeys("ctrl+o"),
+			key.WithHelp("ctrl+o", "options"),
 		),
 		viewState: viewStateSessions,
 	}
@@ -73,7 +81,7 @@ func newListKeymap() listKeymap {
 	}
 }
 
-func newChatViewportKeymap() viewport.KeyMap {
+func newViewportKeymap() viewport.KeyMap {
 	km := viewport.DefaultKeyMap()
 
 	km.HalfPageDown.SetEnabled(false)
@@ -94,7 +102,7 @@ func newChatViewportKeymap() viewport.KeyMap {
 	return km
 }
 
-func newChatTextAreaKeymap() textarea.KeyMap {
+func newTextAreaKeymap() textarea.KeyMap {
 	km := textarea.DefaultKeyMap
 
 	km.LineNext.SetKeys("down")
@@ -106,13 +114,31 @@ func newChatTextAreaKeymap() textarea.KeyMap {
 	return km
 }
 
+func newFormKeymap() *huh.KeyMap {
+	km := huh.NewDefaultKeyMap()
+
+	km.FilePicker.Open.SetHelp("→/l", "open")
+	km.FilePicker.Back.SetHelp("←/h", "back")
+
+	return km
+}
+
 func (k keymap) FullHelp() [][]key.Binding {
+	if k.viewState == viewStateDocumentScan {
+		return [][]key.Binding{
+			{k.viewportKeymap.Up, k.viewportKeymap.Down, k.viewportKeymap.PageUp, k.viewportKeymap.PageDown, k.escape},
+			{k.quit, k.closeHelp},
+		}
+	}
 	return [][]key.Binding{
-		{k.chatViewportKeymap.Up, k.chatViewportKeymap.Down, k.chatViewportKeymap.PageUp, k.chatViewportKeymap.PageDown, k.escape},
-		{k.chatTextAreaKeymap.InsertNewline, k.submit, k.quit, k.closeHelp},
+		{k.viewportKeymap.Up, k.viewportKeymap.Down, k.viewportKeymap.PageUp, k.viewportKeymap.PageDown, k.escape},
+		{k.textAreaKeymap.InsertNewline, k.submit, k.quit, k.closeHelp},
 	}
 }
 
 func (k keymap) ShortHelp() []key.Binding {
-	return []key.Binding{k.chatTextAreaKeymap.InsertNewline, k.submit, k.quit, k.openHelp}
+	if k.viewState == viewStateDocumentScan {
+		return []key.Binding{k.escape, k.viewportKeymap.Up, k.viewportKeymap.Down, k.openHelp}
+	}
+	return []key.Binding{k.textAreaKeymap.InsertNewline, k.submit, k.quit, k.openHelp}
 }

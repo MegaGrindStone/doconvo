@@ -34,12 +34,14 @@ func (m mainModel) initSessions() (mainModel, error) {
 	m.sessionList = defaultList("Sessions List", m.keymap, func() []key.Binding {
 		return []key.Binding{
 			m.keymap.new,
+			m.keymap.option,
 		}
 	}, func() []key.Binding {
 		return []key.Binding{
 			m.keymap.new,
 			m.keymap.delete,
 			m.keymap.pick,
+			m.keymap.option,
 		}
 	})
 	m.sessionList.SetItems(items)
@@ -70,6 +72,8 @@ func (m mainModel) handleSessionsEvents(msg tea.Msg) (mainModel, tea.Cmd) {
 			return m.deleteSession(m.sessionList.Index()), nil
 		case key.Matches(msg, m.keymap.pick):
 			return m.selectSession(m.sessionList.Index()), nil
+		case key.Matches(msg, m.keymap.option):
+			return m.setViewState(viewStateOptions).updateOptionsSize(), nil
 		}
 	}
 

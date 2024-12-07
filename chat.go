@@ -32,7 +32,7 @@ const (
 
 func (m mainModel) initChat() mainModel {
 	m.chatViewport = viewport.New(0, 0)
-	m.chatViewport.KeyMap = m.keymap.chatViewportKeymap
+	m.chatViewport.KeyMap = m.keymap.viewportKeymap
 
 	m.chatSpinner = spinner.New(spinner.WithSpinner(spinner.MiniDot))
 
@@ -47,7 +47,7 @@ func (m mainModel) initChat() mainModel {
 	m.chatTextArea.SetHeight(3)
 	m.chatTextArea.Placeholder = "Type your message here..."
 	m.chatTextArea.CharLimit = 0
-	m.chatTextArea.KeyMap = m.keymap.chatTextAreaKeymap
+	m.chatTextArea.KeyMap = m.keymap.textAreaKeymap
 
 	m.chatMDRenderer, _ = glamour.NewTermRenderer(
 		glamour.WithAutoStyle(),

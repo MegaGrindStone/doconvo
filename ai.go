@@ -1,6 +1,10 @@
 package main
 
-import "context"
+import (
+	"context"
+
+	"github.com/philippgille/chromem-go"
+)
 
 type aiResponse struct {
 	content string
@@ -24,11 +28,13 @@ type aiResponseTitleMsg struct {
 type ai interface {
 	chat(context.Context, []chat) aiResponse
 	chatStream(context.Context, []chat) <-chan aiResponse
+	embeddingFunc() chromem.EmbeddingFunc
 }
 
 const (
 	convoName    = "convo"
 	titleGenName = "title-gen"
+	embedderName = "embedder"
 )
 
 func loadAI() map[string]ai {
@@ -36,6 +42,7 @@ func loadAI() map[string]ai {
 	return map[string]ai{
 		convoName:    o,
 		titleGenName: o,
+		embedderName: newOllawaWithModel("nomic-embed-text"),
 	}
 }
 
