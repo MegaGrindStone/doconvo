@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"slices"
 	"strings"
 	"time"
 
@@ -15,6 +16,7 @@ import (
 	"github.com/charmbracelet/glamour"
 	"github.com/charmbracelet/lipgloss"
 	"github.com/muesli/reflow/wordwrap"
+	"github.com/philippgille/chromem-go"
 )
 
 type chat struct {
@@ -276,8 +278,33 @@ func (m mainModel) sendChat() (mainModel, tea.Cmd) {
 	ctx, cancel := context.WithCancel(context.Background())
 	m.chatCancelFunc = cancel
 
-	res := m.convoAI.chatStream(ctx, selectedSession.Chats)
 	go func(index int) {
+		var ragDocs []chromem.Result
+
+		for _, doc := range m.documents {
+			rds, err := doc.retrieve(m.vectordb, msg, m.embedderAI.embeddingFunc())
+			if err != nil {
+				m.aiResponses <- aiResponseMsg{
+					chatIndex: index,
+					err:       err,
+				}
+				return
+			}
+			ragDocs = append(ragDocs, rds...)
+		}
+
+		ragPrompt := ragSystemPrompt(ragDocs)
+
+		cs := make([]chat, len(selectedSession.Chats))
+		copy(cs, selectedSession.Chats)
+
+		cs = slices.Insert(cs, 0, chat{
+			Role:    roleSystem,
+			Content: ragPrompt,
+		})
+
+		res := m.convoAI.chatStream(ctx, cs)
+
 		for r := range res {
 			if r.err != nil {
 				m.aiResponses <- aiResponseMsg{

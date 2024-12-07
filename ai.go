@@ -91,3 +91,20 @@ Based on this conversation, create a clear and concise title that captures its m
 
 	return res.content, nil
 }
+
+func ragSystemPrompt(docs []chromem.Result) string {
+	knowledge := ""
+	for _, doc := range docs {
+		knowledge += "\n---\n" + doc.Content + "\n"
+	}
+	return `
+You are a knowledgeable and helpful assistant. You have been provided with additional specific information to enhance your existing knowledge.
+
+Before this conversation, you have thoroughly studied and internalized the following information:
+
+` + knowledge + `
+
+Treat this information as part of your core knowledge base. When answering questions, naturally integrate this information with your general knowledge to provide comprehensive, accurate, and helpful responses. While this information should be your primary source when relevant, there's no need to explicitly mention or distinguish between different sources of information in your responses.
+
+Focus on providing clear, accurate, and helpful answers that best serve the user's needs.`
+}
