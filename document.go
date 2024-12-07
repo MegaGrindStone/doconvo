@@ -350,7 +350,7 @@ func (m mainModel) handleScanLogMsg(msg documentScanLogMsg) mainModel {
 
 	if msg.err != nil {
 		m.err = msg.err
-		m.chatCancelFunc = nil
+		m.documentScanCancelFunc = nil
 
 		m.documentScanViewport.SetContent(strings.Join(m.documentScanLogs, "\n"))
 		m.documentScanViewport.GotoBottom()
@@ -362,7 +362,7 @@ func (m mainModel) handleScanLogMsg(msg documentScanLogMsg) mainModel {
 		m.documentScanLogs = append(m.documentScanLogs,
 			fmt.Sprintf("Scan complete in %s", time.Since(m.documentScanStartTime)))
 		m.documentsList.SetItem(m.selectedDocumentIndex, m.documents[m.selectedDocumentIndex])
-		m.chatCancelFunc = nil
+		m.documentScanCancelFunc = nil
 	}
 
 	m.documentScanViewport.SetContent(strings.Join(m.documentScanLogs, "\n"))
@@ -410,6 +410,11 @@ func (m mainModel) scanDocument() mainModel {
 
 				fileData, err := os.ReadFile(p)
 				if err != nil {
+					return
+				}
+
+				// Avoid processing empty files
+				if len(fileData) == 0 {
 					return
 				}
 
