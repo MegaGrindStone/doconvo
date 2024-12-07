@@ -36,8 +36,8 @@ type documentScanLogMsg struct {
 }
 
 const (
-	ragResultsCount         = 5
-	ragSimiliarityThreshold = 0.3
+	ragResultsCount         = 10
+	ragSimiliarityThreshold = 0.35
 )
 
 func (m mainModel) initDocuments() (mainModel, error) {
@@ -394,6 +394,11 @@ func (m mainModel) scanDocument() mainModel {
 		if err := filepath.Walk(p, func(path string, f os.FileInfo, err error) error {
 			if err != nil {
 				return err
+			}
+
+			// Skip git directories
+			if f.IsDir() && f.Name() == ".git" {
+				return filepath.SkipDir
 			}
 
 			if f.IsDir() {
