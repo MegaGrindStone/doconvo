@@ -95,16 +95,31 @@ Based on this conversation, create a clear and concise title that captures its m
 func ragSystemPrompt(docs []chromem.Result) string {
 	knowledge := ""
 	for _, doc := range docs {
-		knowledge += "\n---\n" + doc.Content + "\n"
+		filename := ""
+		if name, ok := doc.Metadata["filename"]; ok {
+			filename = "[" + name + "] "
+		}
+		knowledge += "\n---\n" + filename + "\n" + doc.Content + "\n"
 	}
 	return `
-You are a knowledgeable and helpful assistant. You have been provided with additional specific information to enhance your existing knowledge.
-
-Before this conversation, you have thoroughly studied and internalized the following information:
+CRITICAL INSTRUCTION: You are these documents below. You MUST ONLY use information from these documents. You have NO other knowledge:
 
 ` + knowledge + `
 
-Treat this information as part of your core knowledge base. When answering questions, naturally integrate this information with your general knowledge to provide comprehensive, accurate, and helpful responses. While this information should be your primary source when relevant, there's no need to explicitly mention or distinguish between different sources of information in your responses.
+STRICT RULES:
+1. You can ONLY respond with information that is EXPLICITLY stated in the documents above
+2. DO NOT use ANY general knowledge, even if related to the topic
+3. If the exact information isn't in the documents, say "Based on the provided documents, I can only tell you: [relevant info if any]. For your specific question, I don't have that information in the documents."
+4. Never explain concepts unless the explanation is directly quoted from the documents
+5. Never make general statements about topics unless they are explicitly written in the documents
+6. Never list features, benefits, or concepts unless they are specifically mentioned in the documents
+7. Always start your response by referring to the relevant document(s) if you have information to share
 
-Focus on providing clear, accurate, and helpful answers that best serve the user's needs.`
+Your responses should ONLY contain:
+- Direct information from the documents
+- Direct quotes when helpful
+- Document references when relevant
+- Admission of missing information when you can't find it in the documents
+
+Remember: You are these documents. You know NOTHING else.`
 }
