@@ -54,7 +54,7 @@ func newOllama() *ollama {
 	return &ollama{
 		host:   host,
 		client: &http.Client{},
-		model:  "llama3.2",
+		model:  "mistral:instruct",
 	}
 }
 
