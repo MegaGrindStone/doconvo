@@ -4,11 +4,8 @@ import (
 	"context"
 	"fmt"
 	"os"
-	"path/filepath"
-	"runtime"
 	"slices"
 	"strings"
-	"sync"
 	"time"
 
 	"github.com/charmbracelet/bubbles/key"
@@ -32,7 +29,9 @@ type documentScanLogMsg struct {
 	content string
 	err     error
 
-	done bool
+	done             bool
+	scannedFileCount int
+	lastScanTime     time.Time
 }
 
 const (
@@ -359,9 +358,17 @@ func (m mainModel) handleScanLogMsg(msg documentScanLogMsg) mainModel {
 	}
 
 	if msg.done {
+		m.documents[m.selectedDocumentIndex].ScannedFileCount = msg.scannedFileCount
+		m.documents[m.selectedDocumentIndex].LastScanTime = msg.lastScanTime
+		doc := m.documents[m.selectedDocumentIndex]
+		if err := saveDocument(m.db, &doc); err != nil {
+			m.err = fmt.Errorf("error saving knowledge: %w", err)
+			return m
+		}
+
 		m.documentScanLogs = append(m.documentScanLogs,
 			fmt.Sprintf("Scan complete in %s", time.Since(m.documentScanStartTime)))
-		m.documentsList.SetItem(m.selectedDocumentIndex, m.documents[m.selectedDocumentIndex])
+		m.documentsList.SetItem(m.selectedDocumentIndex, doc)
 		m.documentScanCancelFunc = nil
 	}
 
@@ -372,8 +379,6 @@ func (m mainModel) handleScanLogMsg(msg documentScanLogMsg) mainModel {
 }
 
 func (m mainModel) scanDocument() mainModel {
-	path := m.documents[m.selectedDocumentIndex].Path
-
 	m.err = nil
 	m.documentScanStartTime = time.Now()
 	m.documentScanLogs = make([]string, 0)
@@ -381,130 +386,7 @@ func (m mainModel) scanDocument() mainModel {
 	ctx, cancel := context.WithCancel(context.Background())
 	m.documentScanCancelFunc = cancel
 
-	documents := make(chan chromem.Document)
-
-	go func(p string) {
-		m.documentScanProgress <- documentScanLogMsg{
-			content: fmt.Sprintf("Scanning %s", p),
-		}
-
-		var wg sync.WaitGroup
-		semaphore := make(chan struct{}, runtime.NumCPU())
-
-		if err := filepath.Walk(p, func(path string, f os.FileInfo, err error) error {
-			if err != nil {
-				return err
-			}
-
-			// Skip git directories
-			if f.IsDir() && f.Name() == ".git" {
-				return filepath.SkipDir
-			}
-
-			if f.IsDir() {
-				return nil
-			}
-
-			wg.Add(1)
-			go func(p string) {
-				semaphore <- struct{}{}
-				defer func() {
-					<-semaphore
-					wg.Done()
-				}()
-
-				fileData, err := os.ReadFile(p)
-				if err != nil {
-					return
-				}
-
-				// Avoid processing empty files
-				if len(fileData) == 0 {
-					return
-				}
-
-				documents <- chromem.Document{
-					ID:      p,
-					Content: string(fileData),
-					Metadata: map[string]string{
-						"filename": filepath.Base(path),
-					},
-				}
-			}(path)
-
-			return nil
-		}); err != nil {
-			m.documentScanProgress <- documentScanLogMsg{
-				content: fmt.Sprintf("Error scanning %s: %s", p, err),
-				err:     err,
-			}
-			return
-		}
-
-		wg.Wait()
-
-		close(documents)
-	}(path)
-
-	go func() {
-		docs := make([]chromem.Document, 0)
-		for doc := range documents {
-			if ctx.Err() != nil {
-				m.documentScanProgress <- documentScanLogMsg{
-					content: fmt.Sprintf("Error adding documents to collection: %s", ctx.Err()),
-					err:     fmt.Errorf("error adding documents to collection: %w", ctx.Err()),
-				}
-				return
-			}
-
-			docs = append(docs, doc)
-
-			m.documentScanProgress <- documentScanLogMsg{
-				content: fmt.Sprintf("Scanning %s", doc.ID),
-			}
-		}
-
-		m.documentScanProgress <- documentScanLogMsg{
-			content: fmt.Sprintf("Scanned %d files, embedding...", len(docs)),
-		}
-
-		m.documents[m.selectedDocumentIndex].ScannedFileCount = len(docs)
-		m.documents[m.selectedDocumentIndex].LastScanTime = time.Now()
-		doc := m.documents[m.selectedDocumentIndex]
-		if err := saveDocument(m.db, &doc); err != nil {
-			m.documentScanProgress <- documentScanLogMsg{
-				content: fmt.Sprintf("Error saving knowledge: %s", err),
-				err:     fmt.Errorf("error saving knowledge: %w", err),
-			}
-			return
-		}
-
-		collName := doc.vectorDBCollectionName()
-		docName := doc.Name
-
-		coll, err := m.vectordb.CreateCollection(collName,
-			map[string]string{"docName": docName}, m.embedderLLM.embeddingFunc())
-		if err != nil {
-			m.documentScanProgress <- documentScanLogMsg{
-				content: fmt.Sprintf("Error creating collection: %s", err),
-				err:     fmt.Errorf("error creating collection: %w", err),
-			}
-			return
-		}
-
-		if err := coll.AddDocuments(ctx, docs, runtime.NumCPU()); err != nil {
-			m.documentScanProgress <- documentScanLogMsg{
-				content: fmt.Sprintf("Error adding documents to collection: %s", err),
-				err:     fmt.Errorf("error adding documents to collection: %w", err),
-			}
-			return
-		}
-
-		m.documentScanProgress <- documentScanLogMsg{
-			content: "Embedding complete",
-			done:    true,
-		}
-	}()
+	go m.rag.scanDocument(ctx, m.documents[m.selectedDocumentIndex], m.documentScanProgress)
 
 	return m.updateDocumentScanSize()
 }

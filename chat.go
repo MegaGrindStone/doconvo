@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"slices"
 	"strings"
 	"time"
 
@@ -16,7 +15,6 @@ import (
 	"github.com/charmbracelet/glamour"
 	"github.com/charmbracelet/lipgloss"
 	"github.com/muesli/reflow/wordwrap"
-	"github.com/philippgille/chromem-go"
 )
 
 type chat struct {
@@ -196,15 +194,10 @@ func (m mainModel) handleChatsResponse(msg llmResponseMsg) (mainModel, tea.Cmd) 
 		if selectedSession.Name == "" {
 			sessionIndex := m.selectedSessionIndex
 			cmd = func() tea.Msg {
-				name, err := generateSessionTitle(context.Background(), m.genTitleLLM, selectedSession.Chats)
+				name, err := m.rag.genTitle()
 				if err != nil {
 					return llmResponseTitleMsg{
 						err: fmt.Errorf("error generating session title: %w", err),
-					}
-				}
-				if name == "" {
-					return llmResponseTitleMsg{
-						err: fmt.Errorf("empty title generated"),
 					}
 				}
 				return llmResponseTitleMsg{
@@ -278,53 +271,7 @@ func (m mainModel) sendChat() (mainModel, tea.Cmd) {
 	ctx, cancel := context.WithCancel(context.Background())
 	m.chatCancelFunc = cancel
 
-	go func(index int) {
-		var ragDocs []chromem.Result
-
-		for _, doc := range m.documents {
-			rds, err := doc.retrieve(m.vectordb, msg, m.embedderLLM.embeddingFunc())
-			if err != nil {
-				m.llmResponses <- llmResponseMsg{
-					chatIndex: index,
-					err:       err,
-				}
-				return
-			}
-			ragDocs = append(ragDocs, rds...)
-		}
-
-		ragPrompt := ragSystemPrompt(ragDocs)
-
-		cs := make([]chat, len(selectedSession.Chats))
-		copy(cs, selectedSession.Chats)
-
-		cs = slices.Insert(cs, 0, chat{
-			Role:    roleSystem,
-			Content: ragPrompt,
-		})
-
-		res := m.convoLLM.chatStream(ctx, cs)
-
-		for r := range res {
-			if r.err != nil {
-				m.llmResponses <- llmResponseMsg{
-					chatIndex: index,
-					err:       r.err,
-				}
-				return
-			}
-
-			m.llmResponses <- llmResponseMsg{
-				chatIndex:  index,
-				content:    r.content,
-				isThinking: false,
-			}
-		}
-
-		m.llmResponses <- llmResponseMsg{
-			done: true,
-		}
-	}(len(selectedSession.Chats))
+	go m.rag.chat(ctx, msg, len(selectedSession.Chats), m.documents, m.llmResponses)
 
 	m.sessions[m.selectedSessionIndex] = selectedSession
 

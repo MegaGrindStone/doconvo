@@ -112,6 +112,8 @@ func (m mainModel) newSession() (mainModel, tea.Cmd) {
 
 func (m mainModel) selectSession(index int) mainModel {
 	m.selectedSessionIndex = index
+	m.rag.clearChats()
+
 	m.chatTextArea.Reset()
 	m.chatTextArea.Focus()
 

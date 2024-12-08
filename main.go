@@ -23,12 +23,8 @@ import (
 )
 
 type mainModel struct {
-	db       *bolt.DB
-	vectordb *chromem.DB
-
-	convoLLM    llm
-	genTitleLLM llm
-	embedderLLM llm
+	db  *bolt.DB
+	rag *rag
 
 	llmResponses           chan llmResponseMsg
 	chatCancelFunc         context.CancelFunc
@@ -135,13 +131,10 @@ func main() {
 
 func newMainModel(db *bolt.DB, vectordb *chromem.DB) (mainModel, error) {
 	m := mainModel{
-		db:       db,
-		vectordb: vectordb,
+		db: db,
 	}
 	llms := loadLLM()
-	m.convoLLM = llms[convoName]
-	m.genTitleLLM = llms[titleGenName]
-	m.embedderLLM = llms[embedderName]
+	m.rag = newRAG(vectordb, llms[convoName], llms[titleGenName], llms[embedderName])
 
 	m.keymap = newKeymap()
 
