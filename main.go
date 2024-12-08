@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"time"
@@ -75,6 +76,25 @@ const (
 	viewStateDocumentScan
 )
 
+func initLogger(cfgPath string) error {
+	logPath := filepath.Join(cfgPath, "doconvo.log")
+	logFile, err := os.OpenFile(logPath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+	if err != nil {
+		return fmt.Errorf("error creating log file: %w", err)
+	}
+
+	opts := &slog.HandlerOptions{
+		Level:     slog.LevelDebug,
+		AddSource: true,
+	}
+
+	handler := slog.NewJSONHandler(logFile, opts)
+	logger := slog.New(handler)
+	slog.SetDefault(logger)
+
+	return nil
+}
+
 func main() {
 	cfgDir, err := os.UserConfigDir()
 	if err != nil {
@@ -85,6 +105,11 @@ func main() {
 	if err := os.MkdirAll(cfgPath, 0755); err != nil {
 		log.Fatal(fmt.Errorf("error creating option directory: %w", err))
 	}
+
+	if err := initLogger(cfgPath); err != nil {
+		log.Fatal(fmt.Errorf("error initializing logger: %w", err))
+	}
+	slog.Info("starting doconvo application")
 
 	dbPath := filepath.Join(cfgDir, "/doconvo/doconvo.db")
 	vectordbPath := filepath.Join(cfgDir, "/doconvo/vectordb")
