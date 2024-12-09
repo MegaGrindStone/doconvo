@@ -15,16 +15,22 @@ import (
 )
 
 type ollama struct {
-	host  string
-	model string
+	host        string
+	model       string
+	temperature float64
 
 	client *http.Client
 }
 
 type ollamaChatRequest struct {
-	Model    string              `json:"model"`
-	Messages []ollamaChatMessage `json:"messages"`
-	Stream   bool                `json:"stream"`
+	Model    string                  `json:"model"`
+	Messages []ollamaChatMessage     `json:"messages"`
+	Stream   bool                    `json:"stream"`
+	Options  ollamaChatRequestOption `json:"options"`
+}
+
+type ollamaChatRequestOption struct {
+	Temperature float64 `json:"temperature"`
 }
 
 type ollamaChatMessage struct {
@@ -46,22 +52,17 @@ const (
 	defaultOllamaHost = "http://127.0.0.1:11434"
 )
 
-func newOllama() *ollama {
+func newOllama(model string, temperature float64) *ollama {
 	host := os.Getenv("OLLAMA_HOST")
 	if host == "" {
 		host = defaultOllamaHost
 	}
 	return &ollama{
-		host:   host,
-		client: &http.Client{},
-		model:  "mistral:instruct",
+		host:        host,
+		client:      &http.Client{},
+		model:       model,
+		temperature: temperature,
 	}
-}
-
-func newOllawaWithModel(model string) *ollama {
-	o := newOllama()
-	o.model = model
-	return o
 }
 
 func (o *ollama) chat(ctx context.Context, chats []chat) llmResponse {
@@ -77,6 +78,9 @@ func (o *ollama) chat(ctx context.Context, chats []chat) llmResponse {
 		Model:    o.model,
 		Messages: msgs,
 		Stream:   false,
+		Options: ollamaChatRequestOption{
+			Temperature: o.temperature,
+		},
 	}
 
 	jsonBody, err := json.Marshal(reqBody)
@@ -140,6 +144,9 @@ func (o *ollama) chatStream(ctx context.Context, chats []chat) <-chan llmRespons
 			Model:    o.model,
 			Messages: msgs,
 			Stream:   true,
+			Options: ollamaChatRequestOption{
+				Temperature: o.temperature,
+			},
 		}
 
 		jsonBody, err := json.Marshal(reqBody)

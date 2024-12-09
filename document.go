@@ -34,11 +34,6 @@ type documentScanLogMsg struct {
 	lastScanTime     time.Time
 }
 
-const (
-	ragResultsCount         = 10
-	ragSimiliarityThreshold = 0.35
-)
-
 func (m mainModel) initDocuments() (mainModel, error) {
 	var err error
 	m.documents, err = loadDocuments(m.db)
@@ -415,7 +410,7 @@ func (d document) vectorDBCollectionName() string {
 	return fmt.Sprintf("doc-%d", d.ID)
 }
 
-func (d document) retrieve(vectordb *chromem.DB, key string, embedFunc chromem.EmbeddingFunc) ([]chromem.Result, error) {
+func (d document) retrieve(ctx context.Context, vectordb *chromem.DB, key string, embedFunc chromem.EmbeddingFunc) ([]chromem.Result, error) {
 	var res []chromem.Result
 
 	collName := d.vectorDBCollectionName()
@@ -423,7 +418,7 @@ func (d document) retrieve(vectordb *chromem.DB, key string, embedFunc chromem.E
 	if coll == nil {
 		return nil, fmt.Errorf("failed to get vectordb collection %s", collName)
 	}
-	docRes, err := coll.Query(context.Background(), key, ragResultsCount, nil, nil)
+	docRes, err := coll.Query(ctx, key, ragResultsCount, nil, nil)
 	if err != nil {
 		return nil, fmt.Errorf("failed to query vectordb collection %s: %w", collName, err)
 	}
