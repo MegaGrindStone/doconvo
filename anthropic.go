@@ -9,14 +9,26 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"os"
+	"slices"
 	"strings"
+
+	"github.com/charmbracelet/bubbles/key"
+	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/huh"
+	"github.com/charmbracelet/lipgloss"
 )
+
+type anthropicProvider struct {
+	APIKey string `json:"apiKey"`
+}
 
 type anthropic struct {
 	apiKey      string
 	model       string
 	temperature float64
-	client      *http.Client
+
+	client *http.Client
 }
 
 type anthropicChatRequest struct {
@@ -249,4 +261,116 @@ func (a anthropic) maxTokens() int {
 		return 8192
 	}
 	return 4096
+}
+
+func (a anthropicProvider) newAnthropic(model string, temperature float64) anthropic {
+	return anthropic{
+		apiKey:      a.APIKey,
+		model:       model,
+		temperature: temperature,
+		client:      &http.Client{},
+	}
+}
+
+func (a anthropicProvider) isConfigured() bool {
+	return a.APIKey != ""
+}
+
+func (m mainModel) newAnthropicForm() (mainModel, tea.Cmd) {
+	apiKey := os.Getenv("ANTHROPIC_API_KEY")
+	m.anthropicForm = huh.NewForm(
+		huh.NewGroup(
+			huh.NewInput().
+				Key("anthropicAPIKey").
+				Title("API Key").
+				Description("Enter the API key for anthropic.").
+				Placeholder("API Key").
+				Value(&apiKey),
+			huh.NewConfirm().
+				Key("anthropicConfirm").
+				Title("Confirm").
+				Description("Save this anthropic settings?").
+				Affirmative("Yes").
+				Negative("Back"),
+		),
+	).
+		WithWidth(m.formWidth).
+		WithHeight(m.formHeight).
+		WithKeyMap(m.keymap.formKeymap).
+		WithShowErrors(true).
+		WithShowHelp(true)
+
+	return m, m.anthropicForm.PrevField()
+}
+
+func (m mainModel) updateAnthropicFormSize() mainModel {
+	titleHeight := lipgloss.Height(titleStyle.Render(""))
+	height := m.height - logoHeight() - titleHeight
+
+	if m.err != nil {
+		height -= errHeight(m.width, m.err)
+	}
+
+	m.formWidth = m.width
+	m.formHeight = height
+
+	return m
+}
+
+func (m mainModel) handleAnthropicFormEvents(msg tea.Msg) (mainModel, tea.Cmd) {
+	switch msg := msg.(type) {
+	case tea.WindowSizeMsg:
+		m = m.updateAnthropicFormSize()
+	case tea.KeyMsg:
+		if key.Matches(msg, m.keymap.escape) {
+			return m.setViewState(viewStateOptions), nil
+		}
+	}
+
+	form, cmd := m.anthropicForm.Update(msg)
+	if f, ok := form.(*huh.Form); ok {
+		m.anthropicForm = f
+	}
+
+	if m.anthropicForm.State != huh.StateCompleted {
+		return m, cmd
+	}
+
+	if !m.anthropicForm.GetBool("anthropicConfirm") {
+		return m.setViewState(viewStateOptions), nil
+	}
+
+	apiKey := m.anthropicForm.GetString("anthropicAPIKey")
+	if apiKey == "" {
+		return m.setViewState(viewStateOptions), nil
+	}
+
+	m.llmProvider.anthropic.APIKey = apiKey
+
+	if err := saveAnthropicSettings(m.db, m.llmProvider.anthropic); err != nil {
+		m.err = fmt.Errorf("error saving anthropic settings: %w", err)
+		return m.updateAnthropicFormSize(), nil
+	}
+
+	idx := slices.IndexFunc(optionItems, func(o optionItem) bool {
+		return o.title == optionAnthropicTitle
+	})
+	oi := optionItems[idx]
+	oi.title += " (configured)"
+	m.optionsList.SetItem(idx, oi)
+
+	return m.setViewState(viewStateOptions), nil
+}
+
+func (m mainModel) anthropicFormView() string {
+	title := "Anthropic Settings"
+	if m.llmProvider.anthropic.isConfigured() {
+		title = "Edit Anthropic Settings"
+	}
+
+	return lipgloss.JoinVertical(lipgloss.Left,
+		logoView(),
+		titleStyle.Render(title),
+		m.anthropicForm.View(),
+	)
 }

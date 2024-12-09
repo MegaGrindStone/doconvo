@@ -14,6 +14,8 @@ type optionItem struct {
 
 const (
 	optionDocumentsTitle = "Documents"
+	optionOllamaTitle    = "Ollama"
+	optionAnthropicTitle = "Anthropic"
 )
 
 var optionItems = []optionItem{
@@ -21,12 +23,37 @@ var optionItems = []optionItem{
 		title:       optionDocumentsTitle,
 		description: "Manages the documents you want to have convo with",
 	},
+	{
+		title:       optionOllamaTitle,
+		description: "Manages the ollama settings",
+	},
+	{
+		title:       optionAnthropicTitle,
+		description: "Manages the anthropic settings",
+	},
 }
 
 func (m mainModel) initOptions() mainModel {
 	items := make([]list.Item, len(optionItems))
 	for i, item := range optionItems {
-		items[i] = item
+		it := item
+
+		switch item.title {
+		case optionOllamaTitle:
+			if m.llmProvider.ollama.isConfigured() {
+				it.title += " (configured)"
+			} else {
+				it.title += " (not configured)"
+			}
+		case optionAnthropicTitle:
+			if m.llmProvider.anthropic.isConfigured() {
+				it.title += " (configured)"
+			} else {
+				it.title += " (not configured)"
+			}
+		}
+
+		items[i] = it
 	}
 
 	m.optionsList = defaultList("Options", m.keymap, func() []key.Binding {
@@ -64,9 +91,12 @@ func (m mainModel) handleOptionsEvents(msg tea.Msg) (mainModel, tea.Cmd) {
 	case tea.KeyMsg:
 		switch {
 		case key.Matches(msg, m.keymap.escape):
+			if !m.llmProvider.isConfigured() {
+				return m, nil
+			}
 			return m.setViewState(viewStateSessions).updateSessionsSize(), nil
 		case key.Matches(msg, m.keymap.pick):
-			return m.selectOption(m.optionsList.Index()), nil
+			return m.selectOption(m.optionsList.Index())
 		}
 	}
 	var cmd tea.Cmd
@@ -81,14 +111,18 @@ func (m mainModel) optionsView() string {
 	)
 }
 
-func (m mainModel) selectOption(index int) mainModel {
+func (m mainModel) selectOption(index int) (mainModel, tea.Cmd) {
 	option := optionItems[index]
 
 	switch option.title {
 	case optionDocumentsTitle:
-		return m.setViewState(viewStateDocuments).updateDocumentsSize()
+		return m.setViewState(viewStateDocuments).updateDocumentsSize(), nil
+	case optionOllamaTitle:
+		return m.setViewState(viewStateOllamaForm).updateOllamaFormSize().newOllamaForm()
+	case optionAnthropicTitle:
+		return m.setViewState(viewStateAnthropicForm).updateAnthropicFormSize().newAnthropicForm()
 	}
-	return m
+	return m, nil
 }
 
 func (c optionItem) Title() string {

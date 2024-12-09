@@ -9,10 +9,19 @@ import (
 	"io"
 	"net/http"
 	"os"
+	"slices"
 	"sync"
 
+	"github.com/charmbracelet/bubbles/key"
+	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/huh"
+	"github.com/charmbracelet/lipgloss"
 	"github.com/philippgille/chromem-go"
 )
+
+type ollamaProvider struct {
+	Host string `json:"host"`
+}
 
 type ollama struct {
 	host        string
@@ -65,7 +74,7 @@ func newOllama(model string, temperature float64) *ollama {
 	}
 }
 
-func (o *ollama) chat(ctx context.Context, chats []chat) llmResponse {
+func (o ollama) chat(ctx context.Context, chats []chat) llmResponse {
 	msgs := make([]ollamaChatMessage, len(chats))
 	for i, chat := range chats {
 		msgs[i] = ollamaChatMessage{
@@ -126,7 +135,7 @@ func (o *ollama) chat(ctx context.Context, chats []chat) llmResponse {
 	}
 }
 
-func (o *ollama) chatStream(ctx context.Context, chats []chat) <-chan llmResponse {
+func (o ollama) chatStream(ctx context.Context, chats []chat) <-chan llmResponse {
 	responseChan := make(chan llmResponse)
 
 	go func() {
@@ -221,7 +230,7 @@ func (o *ollama) chatStream(ctx context.Context, chats []chat) <-chan llmRespons
 //
 // This codes is taken directly from the chromem-go library, with a little modification,
 // to make it work to the newer ollama embedding API.
-func (c *ollama) embeddingFunc() chromem.EmbeddingFunc {
+func (c ollama) embeddingFunc() chromem.EmbeddingFunc {
 	var checkedNormalized bool
 	checkNormalized := sync.Once{}
 
@@ -291,4 +300,119 @@ func (c *ollama) embeddingFunc() chromem.EmbeddingFunc {
 
 		return v, nil
 	}
+}
+
+func (o ollamaProvider) newOllama(model string, temperature float64) ollama {
+	return ollama{
+		host:        o.Host,
+		model:       model,
+		temperature: temperature,
+		client:      &http.Client{},
+	}
+}
+
+func (o ollamaProvider) isConfigured() bool {
+	return o.Host != ""
+}
+
+func (m mainModel) newOllamaForm() (mainModel, tea.Cmd) {
+	host := os.Getenv("OLLAMA_HOST")
+	if host == "" {
+		host = defaultOllamaHost
+	}
+	m.ollamaForm = huh.NewForm(
+		huh.NewGroup(
+			huh.NewInput().
+				Key("ollamaHost").
+				Title("Host").
+				Description("Enter the host for ollama.").
+				Placeholder("Host").
+				Value(&host),
+			huh.NewConfirm().
+				Key("ollamaConfirm").
+				Title("Confirm").
+				Description("Save this ollama settings?").
+				Affirmative("Yes").
+				Negative("Back"),
+		),
+	).
+		WithWidth(m.formWidth).
+		WithHeight(m.formHeight).
+		WithKeyMap(m.keymap.formKeymap).
+		WithShowErrors(true).
+		WithShowHelp(true)
+
+	return m, m.ollamaForm.PrevField()
+}
+
+func (m mainModel) updateOllamaFormSize() mainModel {
+	titleHeight := lipgloss.Height(titleStyle.Render(""))
+	height := m.height - logoHeight() - titleHeight
+
+	if m.err != nil {
+		height -= errHeight(m.width, m.err)
+	}
+
+	m.formWidth = m.width
+	m.formHeight = height
+
+	return m
+}
+
+func (m mainModel) handleOllamaFormEvents(msg tea.Msg) (mainModel, tea.Cmd) {
+	switch msg := msg.(type) {
+	case tea.WindowSizeMsg:
+		m = m.updateOllamaFormSize()
+	case tea.KeyMsg:
+		if key.Matches(msg, m.keymap.escape) {
+			return m.setViewState(viewStateOptions), nil
+		}
+	}
+
+	form, cmd := m.ollamaForm.Update(msg)
+	if f, ok := form.(*huh.Form); ok {
+		m.ollamaForm = f
+	}
+
+	if m.ollamaForm.State != huh.StateCompleted {
+		return m, cmd
+	}
+
+	if !m.ollamaForm.GetBool("ollamaConfirm") {
+		return m.setViewState(viewStateOptions), nil
+	}
+
+	host := m.ollamaForm.GetString("ollamaHost")
+	if host == "" {
+		return m.setViewState(viewStateOptions), nil
+	}
+
+	m.llmProvider.ollama.Host = host
+
+	if err := saveOllamaSettings(m.db, m.llmProvider.ollama); err != nil {
+		m.err = fmt.Errorf("error saving ollama settings: %w", err)
+		return m.updateOllamaFormSize(), nil
+	}
+
+	idx := slices.IndexFunc(optionItems, func(o optionItem) bool {
+		return o.title == optionOllamaTitle
+	})
+	oi := optionItems[idx]
+	oi.title += " (configured)"
+	m.optionsList.SetItem(idx, oi)
+
+	return m.setViewState(viewStateOptions), nil
+}
+
+func (m mainModel) ollamaFormView() string {
+	title := "Ollama Settings"
+	if m.llmProvider.ollama.isConfigured() {
+		title = "Edit Ollama Settings"
+	}
+
+	return lipgloss.JoinVertical(lipgloss.Left,
+		logoView(),
+		titleStyle.Render(title),
+		m.ollamaForm.View(),
+	)
 }

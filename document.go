@@ -192,8 +192,8 @@ func (m mainModel) newDocumentForm() (mainModel, tea.Cmd) {
 				Negative("Back"),
 		),
 	).
-		WithWidth(m.documentFormWidth).
-		WithHeight(m.documentFormHeight).
+		WithWidth(m.formWidth).
+		WithHeight(m.formHeight).
 		WithKeyMap(m.keymap.formKeymap).
 		WithShowErrors(true).
 		WithShowHelp(true)
@@ -209,8 +209,8 @@ func (m mainModel) updateDocumentFormSize() mainModel {
 		height -= errHeight(m.width, m.err)
 	}
 
-	m.documentFormWidth = m.width
-	m.documentFormHeight = height
+	m.formWidth = m.width
+	m.formHeight = height
 
 	return m
 }

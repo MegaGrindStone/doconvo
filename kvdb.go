@@ -8,8 +8,9 @@ import (
 )
 
 const (
-	sessionsBucket  = "sessions"
-	documentsBucket = "documents"
+	sessionsBucket    = "sessions"
+	documentsBucket   = "documents"
+	llmSettingsBucket = "llmSettings"
 )
 
 func initKVDB(db *bolt.DB) error {
@@ -19,6 +20,10 @@ func initKVDB(db *bolt.DB) error {
 			return err
 		}
 		_, err = tx.CreateBucketIfNotExists([]byte(documentsBucket))
+		if err != nil {
+			return err
+		}
+		_, err = tx.CreateBucketIfNotExists([]byte(llmSettingsBucket))
 		if err != nil {
 			return err
 		}
@@ -112,6 +117,76 @@ func deleteDocument(db *bolt.DB, id int) error {
 	return db.Update(func(tx *bolt.Tx) error {
 		b := tx.Bucket([]byte(documentsBucket))
 		return b.Delete(itob(id))
+	})
+}
+
+func loadOllamaSettings(db *bolt.DB) (ollamaProvider, error) {
+	var ollama ollamaProvider
+
+	err := db.View(func(tx *bolt.Tx) error {
+		b := tx.Bucket([]byte(llmSettingsBucket))
+
+		data := b.Get([]byte("ollama"))
+		if data == nil {
+			return nil
+		}
+
+		err := json.Unmarshal(data, &ollama)
+		if err != nil {
+			return err
+		}
+
+		return nil
+	})
+
+	return ollama, err
+}
+
+func saveOllamaSettings(db *bolt.DB, ollama ollamaProvider) error {
+	return db.Update(func(tx *bolt.Tx) error {
+		b := tx.Bucket([]byte(llmSettingsBucket))
+
+		data, err := json.Marshal(ollama)
+		if err != nil {
+			return err
+		}
+
+		return b.Put([]byte("ollama"), data)
+	})
+}
+
+func loadAnthropicSettings(db *bolt.DB) (anthropicProvider, error) {
+	var anthro anthropicProvider
+
+	err := db.View(func(tx *bolt.Tx) error {
+		b := tx.Bucket([]byte(llmSettingsBucket))
+
+		data := b.Get([]byte("anthropic"))
+		if data == nil {
+			return nil
+		}
+
+		err := json.Unmarshal(data, &anthro)
+		if err != nil {
+			return err
+		}
+
+		return nil
+	})
+
+	return anthro, err
+}
+
+func saveAnthropicSettings(db *bolt.DB, anthro anthropicProvider) error {
+	return db.Update(func(tx *bolt.Tx) error {
+		b := tx.Bucket([]byte(llmSettingsBucket))
+
+		data, err := json.Marshal(anthro)
+		if err != nil {
+			return err
+		}
+
+		return b.Put([]byte("anthropic"), data)
 	})
 }
 
