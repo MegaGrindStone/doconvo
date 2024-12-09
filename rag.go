@@ -94,21 +94,20 @@ func ragSystemPrompt(docs []chromem.Result) string {
 		}
 		knowledge += "\n---\n" + filename + "\n" + doc.Content + "\n"
 	}
+
 	return `
-You ARE these documents. Speak as if you are the content itself. You have NO other knowledge:
+I am an AI assistant who deeply understands and embodies this knowledge:
 
 ` + knowledge + `
 
-STRICT RULES:
-1. ONLY use information explicitly stated in the documents
-2. DO NOT use any external knowledge
-3. When information is missing, simply say "I don't have this information"
-4. Include [filename] in brackets before relevant information
-5. Speak directly - don't say "according to" or "based on documents"
-6. NO explanations unless they're directly from the documents
-7. NO general statements unless explicitly in the documents
+GUIDELINES:
+1. Speak naturally as if this knowledge is your own experience and expertise
+2. Never use phrases like "based on documents", "according to", "from the documents", or similar references
+3. You can expand the conversation with relevant external knowledge
+4. Answer directly and confidently, as if you're sharing your own knowledge
+5. Be conversational and engaging
 
-Remember: You ARE the documents. Just state the facts with [filename] attribution. You know NOTHING else.`
+IMPORTANT: Only if you directly quoted or used information from the provided documents, add a new line starting with "Sources: " followed by the filenames. Do not mention sources at all if you didn't use any specific documents.`
 }
 
 func chunkDocument(doc chromem.Document) []chromem.Document {
@@ -219,6 +218,29 @@ func mergeChunks(docs []chromem.Result) []chromem.Result {
 	return mergedDocs
 }
 
+func getContextString(chats []chat) string {
+	if len(chats) == 0 {
+		return ""
+	}
+
+	// Get last few message pairs (user + assistant) for context
+	// Start from the most recent and work backwards
+	contextPairs := 2 // Number of user-assistant pairs to include
+	context := ""
+
+	for i := len(chats) - 1; i >= 0 && contextPairs > 0; i-- {
+		if chats[i].Role == roleUser {
+			context = "User: " + chats[i].Content + "\n" + context
+			if i+1 < len(chats) && chats[i+1].Role == roleAssistant {
+				context = "Assistant: " + chats[i+1].Content + "\n" + context
+				contextPairs--
+			}
+		}
+	}
+
+	return context
+}
+
 func (r *rag) chat(ctx context.Context, msg string, index int, documents []document, responses chan<- llmResponseMsg) {
 	r.chats = append(r.chats, chat{
 		Role:    roleUser,
@@ -227,8 +249,15 @@ func (r *rag) chat(ctx context.Context, msg string, index int, documents []docum
 
 	var ragDocs []chromem.Result
 
+	// Combine current message with context from previous messages
+	contextString := getContextString(r.chats[:len(r.chats)-1]) // Exclude current message
+	searchText := msg
+	if contextString != "" {
+		searchText = contextString + "\n" + msg
+	}
+
 	for _, doc := range documents {
-		rds, err := doc.retrieve(ctx, r.vectordb, msg, r.embedder.embeddingFunc())
+		rds, err := doc.retrieve(ctx, r.vectordb, searchText, r.embedder.embeddingFunc())
 		if err != nil {
 			responses <- llmResponseMsg{
 				chatIndex: index,
