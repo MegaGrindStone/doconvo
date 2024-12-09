@@ -159,7 +159,8 @@ func newMainModel(db *bolt.DB, vectordb *chromem.DB) (mainModel, error) {
 		db: db,
 	}
 	llms := loadLLM()
-	m.rag = newRAG(vectordb, llms[convoName], llms[titleGenName], llms[embedderName])
+	embedder := loadEmbedder()
+	m.rag = newRAG(vectordb, llms[convoName], llms[titleGenName], embedder)
 
 	m.keymap = newKeymap()
 

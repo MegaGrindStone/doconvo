@@ -22,7 +22,8 @@ type rag struct {
 
 	convoLLM    llm
 	genTitleLLM llm
-	embedderLLM llm
+
+	embedder embedder
 
 	chats []chat
 }
@@ -142,12 +143,12 @@ func chunkDocument(doc chromem.Document) []chromem.Document {
 	return chunks
 }
 
-func newRAG(vectordb *chromem.DB, convoLLM, genTitleLLM, embedderLLM llm) *rag {
+func newRAG(vectordb *chromem.DB, convoLLM, genTitleLLM llm, embedder embedder) *rag {
 	return &rag{
 		vectordb:    vectordb,
 		convoLLM:    convoLLM,
 		genTitleLLM: genTitleLLM,
-		embedderLLM: embedderLLM,
+		embedder:    embedder,
 	}
 }
 
@@ -227,7 +228,7 @@ func (r *rag) chat(ctx context.Context, msg string, index int, documents []docum
 	var ragDocs []chromem.Result
 
 	for _, doc := range documents {
-		rds, err := doc.retrieve(ctx, r.vectordb, msg, r.embedderLLM.embeddingFunc())
+		rds, err := doc.retrieve(ctx, r.vectordb, msg, r.embedder.embeddingFunc())
 		if err != nil {
 			responses <- llmResponseMsg{
 				chatIndex: index,
@@ -412,7 +413,7 @@ func (r *rag) storeDocument(ctx context.Context, doc document, documents <-chan 
 	docName := doc.Name
 
 	coll, err := r.vectordb.CreateCollection(collName,
-		map[string]string{"docName": docName}, r.embedderLLM.embeddingFunc())
+		map[string]string{"docName": docName}, r.embedder.embeddingFunc())
 	if err != nil {
 		progress <- documentScanLogMsg{
 			content: fmt.Sprintf("Error creating collection: %s", err),
