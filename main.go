@@ -45,8 +45,8 @@ type mainModel struct {
 	documentForm         *huh.Form
 	documentScanViewport viewport.Model
 
-	ollamaForm    *huh.Form
-	anthropicForm *huh.Form
+	providersList list.Model
+	providerForm  *huh.Form
 
 	helpModel help.Model
 
@@ -57,7 +57,8 @@ type mainModel struct {
 	selectedDocumentIndex int
 	documentScanLogs      []string
 	documentScanStartTime time.Time
-	llmProvider           llmProvider
+	providers             []llmProvider
+	selectedProviderIndex int
 
 	keymap     keymap
 	width      int
@@ -78,8 +79,8 @@ const (
 	viewStateDocuments
 	viewStateDocumentForm
 	viewStateDocumentScan
-	viewStateOllamaForm
-	viewStateAnthropicForm
+	viewStateProviders
+	viewStateProviderForm
 )
 
 func initLogger(cfgPath string) error {
@@ -167,13 +168,13 @@ func newMainModel(db *bolt.DB, vectordb *chromem.DB) (mainModel, error) {
 
 	var err error
 
-	m.llmProvider, err = loadLLMProvider(db)
+	m, err = m.initProviders()
 	if err != nil {
-		return mainModel{}, fmt.Errorf("failed to load llm provider: %w", err)
+		return mainModel{}, fmt.Errorf("failed to load llm providers: %w", err)
 	}
 
 	m.viewState = viewStateSessions
-	if !m.llmProvider.isConfigured() {
+	if !m.providersIsConfigured() {
 		m.viewState = viewStateOptions
 	}
 
@@ -235,10 +236,10 @@ func (m mainModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m, cmd = m.handleDocumentFormEvents(msg)
 	case viewStateDocumentScan:
 		m, cmd = m.handleDocumentScanEvents(msg)
-	case viewStateOllamaForm:
-		m, cmd = m.handleOllamaFormEvents(msg)
-	case viewStateAnthropicForm:
-		m, cmd = m.handleAnthropicFormEvents(msg)
+	case viewStateProviders:
+		m, cmd = m.handleProvidersEvents(msg)
+	case viewStateProviderForm:
+		m, cmd = m.handleProviderFormEvents(msg)
 	}
 
 	return m, cmd
@@ -260,10 +261,10 @@ func (m mainModel) View() string {
 		vs = append(vs, m.documentFormView())
 	case viewStateDocumentScan:
 		vs = append(vs, m.documentScanView())
-	case viewStateOllamaForm:
-		vs = append(vs, m.ollamaFormView())
-	case viewStateAnthropicForm:
-		vs = append(vs, m.anthropicFormView())
+	case viewStateProviders:
+		vs = append(vs, m.providersView())
+	case viewStateProviderForm:
+		vs = append(vs, m.providerFormView())
 	default:
 		m.err = fmt.Errorf("unknown view state %d", m.viewState)
 	}

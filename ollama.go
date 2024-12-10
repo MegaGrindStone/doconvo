@@ -9,14 +9,11 @@ import (
 	"io"
 	"net/http"
 	"os"
-	"slices"
 	"sync"
 
-	"github.com/charmbracelet/bubbles/key"
-	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/huh"
-	"github.com/charmbracelet/lipgloss"
 	"github.com/philippgille/chromem-go"
+	bolt "go.etcd.io/bbolt"
 )
 
 type ollamaProvider struct {
@@ -55,6 +52,14 @@ type ollamaChatResponse struct {
 
 type ollamaEmbedResponse struct {
 	Embeddings [][]float32 `json:"embeddings"`
+}
+
+type ollamaModelsResponse struct {
+	Models []ollamaModel `json:"models"`
+}
+
+type ollamaModel struct {
+	Name string `json:"name"`
 }
 
 const (
@@ -302,7 +307,22 @@ func (c ollama) embeddingFunc() chromem.EmbeddingFunc {
 	}
 }
 
-func (o ollamaProvider) newOllama(model string, temperature float64) ollama {
+func (o ollamaProvider) Title() string {
+	if o.isConfigured() {
+		return fmt.Sprintf("%s (configured)", providerOllama)
+	}
+	return fmt.Sprintf("%s (not configured)", providerOllama)
+}
+
+func (o ollamaProvider) Description() string {
+	return "Configure Ollama connection"
+}
+
+func (o ollamaProvider) FilterValue() string {
+	return providerOllama
+}
+
+func (o ollamaProvider) new(model string, temperature float64) ollama {
 	return ollama{
 		host:        o.Host,
 		model:       model,
@@ -311,16 +331,51 @@ func (o ollamaProvider) newOllama(model string, temperature float64) ollama {
 	}
 }
 
+func (o ollamaProvider) availableModels() ([]string, error) {
+	req, err := http.NewRequest("GET", o.Host+"/api/tags", nil)
+	if err != nil {
+		return nil, fmt.Errorf("error creating request: %w", err)
+	}
+
+	client := &http.Client{}
+
+	resp, err := client.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("error sending request: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		return nil, fmt.Errorf("unexpected status code: %d, body: %s", resp.StatusCode, string(body))
+	}
+
+	var response ollamaModelsResponse
+	if err := json.NewDecoder(resp.Body).Decode(&response); err != nil {
+		return nil, fmt.Errorf("error decoding response: %w", err)
+	}
+
+	models := make([]string, len(response.Models))
+	for i, model := range response.Models {
+		models[i] = model.Name
+	}
+
+	return models, nil
+}
+
 func (o ollamaProvider) isConfigured() bool {
 	return o.Host != ""
 }
 
-func (m mainModel) newOllamaForm() (mainModel, tea.Cmd) {
-	host := os.Getenv("OLLAMA_HOST")
+func (o ollamaProvider) form(width, height int, keymap *huh.KeyMap) *huh.Form {
+	host := o.Host
+	if host == "" {
+		host = os.Getenv("OLLAMA_HOST")
+	}
 	if host == "" {
 		host = defaultOllamaHost
 	}
-	m.ollamaForm = huh.NewForm(
+	return huh.NewForm(
 		huh.NewGroup(
 			huh.NewInput().
 				Key("ollamaHost").
@@ -336,83 +391,28 @@ func (m mainModel) newOllamaForm() (mainModel, tea.Cmd) {
 				Negative("Back"),
 		),
 	).
-		WithWidth(m.formWidth).
-		WithHeight(m.formHeight).
-		WithKeyMap(m.keymap.formKeymap).
+		WithWidth(width).
+		WithHeight(height).
+		WithKeyMap(keymap).
 		WithShowErrors(true).
 		WithShowHelp(true)
-
-	return m, m.ollamaForm.PrevField()
 }
 
-func (m mainModel) updateOllamaFormSize() mainModel {
-	titleHeight := lipgloss.Height(titleStyle.Render(""))
-	height := m.height - logoHeight() - titleHeight
-
-	if m.err != nil {
-		height -= errHeight(m.width, m.err)
+func (o ollamaProvider) saveForm(db *bolt.DB, form *huh.Form) (llmProvider, bool, error) {
+	if !form.GetBool("ollamaConfirm") {
+		return o, false, nil
 	}
 
-	m.formWidth = m.width
-	m.formHeight = height
-
-	return m
-}
-
-func (m mainModel) handleOllamaFormEvents(msg tea.Msg) (mainModel, tea.Cmd) {
-	switch msg := msg.(type) {
-	case tea.WindowSizeMsg:
-		m = m.updateOllamaFormSize()
-	case tea.KeyMsg:
-		if key.Matches(msg, m.keymap.escape) {
-			return m.setViewState(viewStateOptions), nil
-		}
-	}
-
-	form, cmd := m.ollamaForm.Update(msg)
-	if f, ok := form.(*huh.Form); ok {
-		m.ollamaForm = f
-	}
-
-	if m.ollamaForm.State != huh.StateCompleted {
-		return m, cmd
-	}
-
-	if !m.ollamaForm.GetBool("ollamaConfirm") {
-		return m.setViewState(viewStateOptions), nil
-	}
-
-	host := m.ollamaForm.GetString("ollamaHost")
+	host := form.GetString("ollamaHost")
 	if host == "" {
-		return m.setViewState(viewStateOptions), nil
+		return o, false, nil
 	}
 
-	m.llmProvider.ollama.Host = host
+	o.Host = host
 
-	if err := saveOllamaSettings(m.db, m.llmProvider.ollama); err != nil {
-		m.err = fmt.Errorf("error saving ollama settings: %w", err)
-		return m.updateOllamaFormSize(), nil
+	if err := saveOllamaSettings(db, o); err != nil {
+		return o, false, fmt.Errorf("error saving ollama settings: %w", err)
 	}
 
-	idx := slices.IndexFunc(optionItems, func(o optionItem) bool {
-		return o.title == optionOllamaTitle
-	})
-	oi := optionItems[idx]
-	oi.title += " (configured)"
-	m.optionsList.SetItem(idx, oi)
-
-	return m.setViewState(viewStateOptions), nil
-}
-
-func (m mainModel) ollamaFormView() string {
-	title := "Ollama Settings"
-	if m.llmProvider.ollama.isConfigured() {
-		title = "Edit Ollama Settings"
-	}
-
-	return lipgloss.JoinVertical(lipgloss.Left,
-		logoView(),
-		titleStyle.Render(title),
-		m.ollamaForm.View(),
-	)
+	return o, true, nil
 }

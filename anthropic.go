@@ -10,13 +10,10 @@ import (
 	"io"
 	"net/http"
 	"os"
-	"slices"
 	"strings"
 
-	"github.com/charmbracelet/bubbles/key"
-	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/huh"
-	"github.com/charmbracelet/lipgloss"
+	bolt "go.etcd.io/bbolt"
 )
 
 type anthropicProvider struct {
@@ -263,7 +260,22 @@ func (a anthropic) maxTokens() int {
 	return 4096
 }
 
-func (a anthropicProvider) newAnthropic(model string, temperature float64) anthropic {
+func (a anthropicProvider) Title() string {
+	if a.isConfigured() {
+		return fmt.Sprintf("%s (configured)", providerAnthropic)
+	}
+	return fmt.Sprintf("%s (not configured)", providerAnthropic)
+}
+
+func (a anthropicProvider) Description() string {
+	return "Configure Anthropic connection"
+}
+
+func (a anthropicProvider) FilterValue() string {
+	return providerAnthropic
+}
+
+func (a anthropicProvider) new(model string, temperature float64) anthropic {
 	return anthropic{
 		apiKey:      a.APIKey,
 		model:       model,
@@ -272,13 +284,26 @@ func (a anthropicProvider) newAnthropic(model string, temperature float64) anthr
 	}
 }
 
+func (a anthropicProvider) availableModels() ([]string, error) {
+	return []string{
+		"claude-3-5-sonnet-20241022",
+		"claude-3-5-haiku-20241022",
+		"claude-3-opus-20240229",
+		"claude-3-sonnet-20240229",
+		"claude-3-haiku-20240307",
+	}, nil
+}
+
 func (a anthropicProvider) isConfigured() bool {
 	return a.APIKey != ""
 }
 
-func (m mainModel) newAnthropicForm() (mainModel, tea.Cmd) {
-	apiKey := os.Getenv("ANTHROPIC_API_KEY")
-	m.anthropicForm = huh.NewForm(
+func (a anthropicProvider) form(width, height int, keymap *huh.KeyMap) *huh.Form {
+	apiKey := a.APIKey
+	if apiKey == "" {
+		apiKey = os.Getenv("ANTHROPIC_API_KEY")
+	}
+	return huh.NewForm(
 		huh.NewGroup(
 			huh.NewInput().
 				Key("anthropicAPIKey").
@@ -294,83 +319,29 @@ func (m mainModel) newAnthropicForm() (mainModel, tea.Cmd) {
 				Negative("Back"),
 		),
 	).
-		WithWidth(m.formWidth).
-		WithHeight(m.formHeight).
-		WithKeyMap(m.keymap.formKeymap).
+		WithWidth(width).
+		WithHeight(height).
+		WithKeyMap(keymap).
 		WithShowErrors(true).
 		WithShowHelp(true)
-
-	return m, m.anthropicForm.PrevField()
 }
 
-func (m mainModel) updateAnthropicFormSize() mainModel {
-	titleHeight := lipgloss.Height(titleStyle.Render(""))
-	height := m.height - logoHeight() - titleHeight
-
-	if m.err != nil {
-		height -= errHeight(m.width, m.err)
+func (a anthropicProvider) saveForm(db *bolt.DB, form *huh.Form) (llmProvider, bool, error) {
+	if !form.GetBool("anthropicConfirm") {
+		return a, false, nil
 	}
 
-	m.formWidth = m.width
-	m.formHeight = height
+	apiKey := form.GetString("anthropicAPIKey")
 
-	return m
-}
-
-func (m mainModel) handleAnthropicFormEvents(msg tea.Msg) (mainModel, tea.Cmd) {
-	switch msg := msg.(type) {
-	case tea.WindowSizeMsg:
-		m = m.updateAnthropicFormSize()
-	case tea.KeyMsg:
-		if key.Matches(msg, m.keymap.escape) {
-			return m.setViewState(viewStateOptions), nil
-		}
-	}
-
-	form, cmd := m.anthropicForm.Update(msg)
-	if f, ok := form.(*huh.Form); ok {
-		m.anthropicForm = f
-	}
-
-	if m.anthropicForm.State != huh.StateCompleted {
-		return m, cmd
-	}
-
-	if !m.anthropicForm.GetBool("anthropicConfirm") {
-		return m.setViewState(viewStateOptions), nil
-	}
-
-	apiKey := m.anthropicForm.GetString("anthropicAPIKey")
 	if apiKey == "" {
-		return m.setViewState(viewStateOptions), nil
+		return a, false, nil
 	}
 
-	m.llmProvider.anthropic.APIKey = apiKey
+	a.APIKey = apiKey
 
-	if err := saveAnthropicSettings(m.db, m.llmProvider.anthropic); err != nil {
-		m.err = fmt.Errorf("error saving anthropic settings: %w", err)
-		return m.updateAnthropicFormSize(), nil
+	if err := saveAnthropicSettings(db, a); err != nil {
+		return a, false, fmt.Errorf("error saving anthropic settings: %w", err)
 	}
 
-	idx := slices.IndexFunc(optionItems, func(o optionItem) bool {
-		return o.title == optionAnthropicTitle
-	})
-	oi := optionItems[idx]
-	oi.title += " (configured)"
-	m.optionsList.SetItem(idx, oi)
-
-	return m.setViewState(viewStateOptions), nil
-}
-
-func (m mainModel) anthropicFormView() string {
-	title := "Anthropic Settings"
-	if m.llmProvider.anthropic.isConfigured() {
-		title = "Edit Anthropic Settings"
-	}
-
-	return lipgloss.JoinVertical(lipgloss.Left,
-		logoView(),
-		titleStyle.Render(title),
-		m.anthropicForm.View(),
-	)
+	return a, true, nil
 }
