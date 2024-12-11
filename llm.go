@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"slices"
 	"strconv"
 
@@ -249,12 +250,14 @@ func (m mainModel) handleConvoLLMFormEvents(msg tea.Msg) (mainModel, tea.Cmd) {
 
 	if err := saveLLMSettings(m.db, roleConvo, m.convoLLMSetting); err != nil {
 		m.err = fmt.Errorf("error saving convo llm settings: %w", err)
+		slog.Error(m.err.Error())
 		return m.updateFormSize(), nil
 	}
 
 	m, err = m.refreshRAG()
 	if err != nil {
 		m.err = fmt.Errorf("error refreshing rag: %w", err)
+		slog.Error(m.err.Error())
 		return m.updateFormSize(), nil
 	}
 
@@ -309,12 +312,14 @@ func (m mainModel) handleGenTitleLLMFormEvents(msg tea.Msg) (mainModel, tea.Cmd)
 
 	if err := saveLLMSettings(m.db, roleTitleGen, m.genTitleLLMSetting); err != nil {
 		m.err = fmt.Errorf("error saving gen title llm settings: %w", err)
+		slog.Error(m.err.Error())
 		return m.updateFormSize(), nil
 	}
 
 	m, err = m.refreshRAG()
 	if err != nil {
 		m.err = fmt.Errorf("error refreshing rag: %w", err)
+		slog.Error(m.err.Error())
 		return m.updateFormSize(), nil
 	}
 
@@ -364,6 +369,7 @@ func (m mainModel) handleEmbedderLLMFormEvents(msg tea.Msg) (mainModel, tea.Cmd)
 
 	if err := saveLLMSettings(m.db, roleEmbedder, m.embedderLLMSetting); err != nil {
 		m.err = fmt.Errorf("error saving embedder llm settings: %w", err)
+		slog.Error(m.err.Error())
 		return m.updateFormSize(), nil
 	}
 
@@ -371,6 +377,7 @@ func (m mainModel) handleEmbedderLLMFormEvents(msg tea.Msg) (mainModel, tea.Cmd)
 	m, err = m.refreshRAG()
 	if err != nil {
 		m.err = fmt.Errorf("error refreshing rag: %w", err)
+		slog.Error(m.err.Error())
 		return m.updateFormSize(), nil
 	}
 

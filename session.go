@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"log/slog"
 	"slices"
 	"time"
 
@@ -96,6 +97,7 @@ func (m mainModel) newSession() (mainModel, tea.Cmd) {
 	}
 	if err := saveSession(m.db, &newSession); err != nil {
 		m.err = fmt.Errorf("error creating new session: %w", err)
+		slog.Error(m.err.Error())
 		return m.updateSessionsSize(), nil
 	}
 	m.sessions = append(m.sessions, newSession)
@@ -125,6 +127,7 @@ func (m mainModel) deleteSession(index int) mainModel {
 
 	if err := deleteSession(m.db, session.ID); err != nil {
 		m.err = fmt.Errorf("error deleting session: %w", err)
+		slog.Error(m.err.Error())
 		return m.updateSessionsSize()
 	}
 

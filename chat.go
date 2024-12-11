@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log/slog"
 	"strings"
 	"time"
 
@@ -179,6 +180,7 @@ func (m mainModel) handleChatsResponse(msg llmResponseMsg) (mainModel, tea.Cmd) 
 		if err := saveSession(m.db, &selectedSession); err != nil {
 			m.err = fmt.Errorf("error saving session: %w", err)
 		}
+		slog.Error(m.err.Error())
 		return m.updateChatSize(), nil
 	}
 
@@ -212,6 +214,7 @@ func (m mainModel) handleChatsResponse(msg llmResponseMsg) (mainModel, tea.Cmd) 
 	m.sessions[m.selectedSessionIndex] = selectedSession
 	if err := saveSession(m.db, &selectedSession); err != nil {
 		m.err = fmt.Errorf("error saving session: %w", err)
+		slog.Error(m.err.Error())
 	}
 
 	return m.updateChatSize(), tea.Batch(cmds...)
@@ -220,6 +223,7 @@ func (m mainModel) handleChatsResponse(msg llmResponseMsg) (mainModel, tea.Cmd) 
 func (m mainModel) handleChatsResponseTitle(msg llmResponseTitleMsg) mainModel {
 	if msg.err != nil {
 		m.err = msg.err
+		slog.Error(m.err.Error())
 		return m.updateChatSize()
 	}
 
@@ -233,6 +237,7 @@ func (m mainModel) handleChatsResponseTitle(msg llmResponseTitleMsg) mainModel {
 
 	if err := saveSession(m.db, &selectedSession); err != nil {
 		m.err = fmt.Errorf("error saving session: %w", err)
+		slog.Error(m.err.Error())
 		return m.updateChatSize()
 	}
 

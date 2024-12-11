@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"os"
 	"slices"
 	"strings"
@@ -111,6 +112,7 @@ func (m mainModel) newDocument() (mainModel, tea.Cmd) {
 	}
 	if err := saveDocument(m.db, &newDocument); err != nil {
 		m.err = fmt.Errorf("error creating new document: %w", err)
+		slog.Error(m.err.Error())
 		return m.updateDocumentsSize(), nil
 	}
 	m.documents = append(m.documents, newDocument)
@@ -144,6 +146,7 @@ func (m mainModel) deleteDocument(index int) mainModel {
 
 	if err := deleteDocument(m.db, document.ID); err != nil {
 		m.err = fmt.Errorf("error deleting document: %w", err)
+		slog.Error(m.err.Error())
 		return m.updateDocumentsSize()
 	}
 
@@ -157,6 +160,7 @@ func (m mainModel) newDocumentForm() (mainModel, tea.Cmd) {
 	homeDir, err := os.UserHomeDir()
 	if err != nil {
 		m.err = fmt.Errorf("error getting user home directory: %w", err)
+		slog.Error(m.err.Error())
 		return m, nil
 	}
 
@@ -231,6 +235,7 @@ func (m mainModel) handleDocumentFormEvents(msg tea.Msg) (mainModel, tea.Cmd) {
 
 	if err := saveDocument(m.db, &selectedDocument); err != nil {
 		m.err = fmt.Errorf("error creating new document: %w", err)
+		slog.Error(m.err.Error())
 		return m.updateFormSize(), nil
 	}
 
@@ -331,6 +336,7 @@ func (m mainModel) handleScanLogMsg(msg documentScanLogMsg) mainModel {
 
 	if msg.err != nil {
 		m.err = msg.err
+		slog.Error(m.err.Error())
 		m.documentScanCancelFunc = nil
 
 		m.documentScanViewport.SetContent(strings.Join(m.documentScanLogs, "\n"))
@@ -345,6 +351,7 @@ func (m mainModel) handleScanLogMsg(msg documentScanLogMsg) mainModel {
 		doc := m.documents[m.selectedDocumentIndex]
 		if err := saveDocument(m.db, &doc); err != nil {
 			m.err = fmt.Errorf("error saving knowledge: %w", err)
+			slog.Error(m.err.Error())
 			return m
 		}
 

@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"log/slog"
 
 	"github.com/charmbracelet/bubbles/key"
 	"github.com/charmbracelet/bubbles/list"
@@ -163,6 +164,7 @@ func (m mainModel) handleProviderFormEvents(msg tea.Msg) (mainModel, tea.Cmd) {
 	provider, confirmed, err := m.providers[m.selectedProviderIndex].saveForm(m.db, m.providerForm)
 	if err != nil {
 		m.err = fmt.Errorf("error saving provider settings: %w", err)
+		slog.Error(m.err.Error())
 		return m.updateFormSize(), nil
 	}
 
