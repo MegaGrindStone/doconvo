@@ -31,7 +31,6 @@ brews:
   - name: doconvo
     homepage: "https://github.com/MegaGrindStone/doconvo"
     description: "Document conversation assistant with RAG capabilities"
-    folder: Formula
     repository:
       owner: MegaGrindStone
       name: homebrew-tap
