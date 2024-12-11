@@ -38,6 +38,7 @@ brews:
     repository:
       owner: MegaGrindStone
       name: homebrew-tap
+      token: "{{ .Env.TAP_GITHUB_TOKEN }}"
     commit_author:
       name: goreleaserbot
       email: bot@goreleaser.com
