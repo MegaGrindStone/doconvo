@@ -25,9 +25,17 @@ The demo uses the following LLM configuration:
 
 ## Installation
 
-### Install via go
+### Install via Homebrew (macOS/Linux)
 
-`go install github.com/MegaGrindStone/doconvo@latest`
+```shell
+brew install MegaGrindStone/tap/doconvo
+```
+
+### Install via Go
+
+```shell
+go install github.com/MegaGrindStone/doconvo@latest
+```
 
 ## Usage
 
