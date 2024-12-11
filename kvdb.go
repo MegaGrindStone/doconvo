@@ -195,6 +195,41 @@ func saveAnthropicSettings(db *bolt.DB, anthro anthropicProvider) error {
 	})
 }
 
+func loadOpenAISettings(db *bolt.DB) (openaiProvider, error) {
+	var openai openaiProvider
+
+	err := db.View(func(tx *bolt.Tx) error {
+		b := tx.Bucket([]byte(llmProviderSettingsBucket))
+
+		data := b.Get([]byte("openai"))
+		if data == nil {
+			return nil
+		}
+
+		err := json.Unmarshal(data, &openai)
+		if err != nil {
+			return err
+		}
+
+		return nil
+	})
+
+	return openai, err
+}
+
+func saveOpenAISettings(db *bolt.DB, openai openaiProvider) error {
+	return db.Update(func(tx *bolt.Tx) error {
+		b := tx.Bucket([]byte(llmProviderSettingsBucket))
+
+		data, err := json.Marshal(openai)
+		if err != nil {
+			return err
+		}
+
+		return b.Put([]byte("openai"), data)
+	})
+}
+
 func loadLLMSettings(db *bolt.DB, roles string) (llmSetting, error) {
 	var llm llmSetting
 

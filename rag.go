@@ -107,7 +107,13 @@ GUIDELINES:
 4. Answer directly and confidently, as if you're sharing your own knowledge
 5. Be conversational and engaging
 
-IMPORTANT: Only if you directly quoted or used information from the provided documents, add a new line starting with "Sources: " followed by the filenames. Do not mention sources at all if you didn't use any specific documents.`
+RESPONSE FORMAT:
+- First provide your complete answer
+- Then, if and only if you used specific information from the provided documents, add:
+  * Start a new line
+  * Add "Sources: " followed by the relevant filenames in square brackets
+  * Example: "Sources: [file1.txt] [file2.md]"
+- If you didn't use any specific information from the documents, do not add a Sources line at all`
 }
 
 func chunkDocument(doc chromem.Document) []chromem.Document {

@@ -32,6 +32,7 @@ type llmProvider interface {
 const (
 	providerOllama    = "Ollama"
 	providerAnthropic = "Anthropic"
+	providerOpenAI    = "OpenAI"
 )
 
 func loadLLMProviders(db *bolt.DB) ([]llmProvider, error) {
@@ -43,8 +44,12 @@ func loadLLMProviders(db *bolt.DB) ([]llmProvider, error) {
 	if err != nil {
 		return nil, fmt.Errorf("failed to load anthropic settings: %w", err)
 	}
+	oa, err := loadOpenAISettings(db)
+	if err != nil {
+		return nil, fmt.Errorf("failed to load openai settings: %w", err)
+	}
 
-	return []llmProvider{o, a}, nil
+	return []llmProvider{o, a, oa}, nil
 }
 
 func (m mainModel) providersIsConfigured() bool {

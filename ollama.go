@@ -222,14 +222,14 @@ func (o ollama) chatStream(ctx context.Context, chats []chat) <-chan llmResponse
 //
 // This codes is taken directly from the chromem-go library, with a little modification,
 // to make it work to the newer ollama embedding API.
-func (c ollama) embeddingFunc() chromem.EmbeddingFunc {
+func (o ollama) embeddingFunc() chromem.EmbeddingFunc {
 	var checkedNormalized bool
 	checkNormalized := sync.Once{}
 
 	return func(ctx context.Context, text string) ([]float32, error) {
 		// Prepare the request body.
 		reqBody, err := json.Marshal(map[string]string{
-			"model": c.model,
+			"model": o.model,
 			"input": text, // new ollama API uses "input" instead of "prompt"
 		})
 		if err != nil {
@@ -239,14 +239,14 @@ func (c ollama) embeddingFunc() chromem.EmbeddingFunc {
 		// Create the request. Creating it with context is important for a timeout
 		// to be possible, because the client is configured without a timeout.
 		// Newer ollama API uses /embed instead of /embeddings.
-		req, err := http.NewRequestWithContext(ctx, "POST", c.host+"/api/embed", bytes.NewBuffer(reqBody))
+		req, err := http.NewRequestWithContext(ctx, "POST", o.host+"/api/embed", bytes.NewBuffer(reqBody))
 		if err != nil {
 			return nil, fmt.Errorf("couldn't create request: %w", err)
 		}
 		req.Header.Set("Content-Type", "application/json")
 
 		// Send the request.
-		resp, err := c.client.Do(req)
+		resp, err := o.client.Do(req)
 		if err != nil {
 			return nil, fmt.Errorf("couldn't send request: %w", err)
 		}

@@ -10,6 +10,7 @@ require (
 	github.com/charmbracelet/lipgloss v1.0.0
 	github.com/muesli/reflow v0.3.0
 	github.com/philippgille/chromem-go v0.7.0
+	github.com/sashabaranov/go-openai v1.36.0
 	go.etcd.io/bbolt v1.3.11
 )
 
