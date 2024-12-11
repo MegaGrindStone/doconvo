@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"flag"
 	"fmt"
 	"log"
 	"log/slog"
@@ -95,15 +96,20 @@ const (
 	viewStateEmbedderLLMForm
 )
 
-func initLogger(cfgPath string) error {
+func initLogger(cfgPath string, debug bool) error {
 	logPath := filepath.Join(cfgPath, "doconvo.log")
 	logFile, err := os.OpenFile(logPath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
 	if err != nil {
 		return fmt.Errorf("error creating log file: %w", err)
 	}
 
+	logLevel := slog.LevelError
+	if debug {
+		logLevel = slog.LevelDebug
+	}
+
 	opts := &slog.HandlerOptions{
-		Level:     slog.LevelDebug,
+		Level:     logLevel,
 		AddSource: true,
 	}
 
@@ -125,7 +131,10 @@ func main() {
 		log.Fatal(fmt.Errorf("error creating option directory: %w", err))
 	}
 
-	if err := initLogger(cfgPath); err != nil {
+	debug := flag.Bool("debug", false, "enable debug logging")
+	flag.Parse()
+
+	if err := initLogger(cfgPath, *debug); err != nil {
 		log.Fatal(fmt.Errorf("error initializing logger: %w", err))
 	}
 	slog.Info("starting doconvo application")
