@@ -1,17 +1,16 @@
 package main
 
 import (
-	"bytes"
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
 	"net/http"
+	"net/url"
 	"os"
 	"sync"
 
 	"github.com/charmbracelet/huh"
+	"github.com/ollama/ollama/api"
 	"github.com/philippgille/chromem-go"
 	bolt "go.etcd.io/bbolt"
 )
@@ -25,41 +24,7 @@ type ollama struct {
 	model       string
 	temperature float64
 
-	client *http.Client
-}
-
-type ollamaChatRequest struct {
-	Model    string                  `json:"model"`
-	Messages []ollamaChatMessage     `json:"messages"`
-	Stream   bool                    `json:"stream"`
-	Options  ollamaChatRequestOption `json:"options"`
-}
-
-type ollamaChatRequestOption struct {
-	Temperature float64 `json:"temperature"`
-}
-
-type ollamaChatMessage struct {
-	Role    string `json:"role"`
-	Content string `json:"content"`
-}
-
-type ollamaChatResponse struct {
-	Model   string            `json:"model"`
-	Message ollamaChatMessage `json:"message"`
-	Done    bool              `json:"done"`
-}
-
-type ollamaEmbedResponse struct {
-	Embeddings [][]float32 `json:"embeddings"`
-}
-
-type ollamaModelsResponse struct {
-	Models []ollamaModel `json:"models"`
-}
-
-type ollamaModel struct {
-	Name string `json:"name"`
+	client *api.Client
 }
 
 const (
@@ -67,64 +32,36 @@ const (
 )
 
 func (o ollama) chat(ctx context.Context, chats []chat) llmResponse {
-	msgs := make([]ollamaChatMessage, len(chats))
+	msgs := make([]api.Message, len(chats))
 	for i, chat := range chats {
-		msgs[i] = ollamaChatMessage{
+		msgs[i] = api.Message{
 			Role:    chat.Role,
 			Content: chat.Content,
 		}
 	}
 
-	reqBody := ollamaChatRequest{
+	f := false
+	req := api.ChatRequest{
 		Model:    o.model,
 		Messages: msgs,
-		Stream:   false,
-		Options: ollamaChatRequestOption{
-			Temperature: o.temperature,
+		Stream:   &f,
+		Options: map[string]interface{}{
+			"temperature": o.temperature,
 		},
 	}
 
-	jsonBody, err := json.Marshal(reqBody)
-	if err != nil {
-		return llmResponse{
-			err: fmt.Errorf("error marshaling request: %w", err),
-		}
-	}
+	var llmResp llmResponse
 
-	req, err := http.NewRequestWithContext(ctx, "POST", o.host+"/api/chat", bytes.NewBuffer(jsonBody))
-	if err != nil {
-		return llmResponse{
-			err: fmt.Errorf("error creating request: %w", err),
-		}
-	}
-
-	req.Header.Set("Content-Type", "application/json")
-
-	resp, err := o.client.Do(req)
-	if err != nil {
+	if err := o.client.Chat(ctx, &req, func(res api.ChatResponse) error {
+		llmResp.content = res.Message.Content
+		return nil
+	}); err != nil {
 		return llmResponse{
 			err: fmt.Errorf("error sending request: %w", err),
 		}
 	}
-	defer resp.Body.Close()
 
-	if resp.StatusCode != http.StatusOK {
-		body, _ := io.ReadAll(resp.Body)
-		return llmResponse{
-			err: fmt.Errorf("unexpected status code: %d, body: %s", resp.StatusCode, string(body)),
-		}
-	}
-
-	var response ollamaChatResponse
-	if err := json.NewDecoder(resp.Body).Decode(&response); err != nil {
-		return llmResponse{
-			err: fmt.Errorf("error decoding response: %w", err),
-		}
-	}
-
-	return llmResponse{
-		content: response.Message.Content,
-	}
+	return llmResp
 }
 
 func (o ollama) chatStream(ctx context.Context, chats []chat) <-chan llmResponse {
@@ -133,43 +70,31 @@ func (o ollama) chatStream(ctx context.Context, chats []chat) <-chan llmResponse
 	go func() {
 		defer close(responseChan)
 
-		msgs := make([]ollamaChatMessage, len(chats))
+		msgs := make([]api.Message, len(chats))
 		for i, chat := range chats {
-			msgs[i] = ollamaChatMessage{
+			msgs[i] = api.Message{
 				Role:    chat.Role,
 				Content: chat.Content,
 			}
 		}
 
-		reqBody := ollamaChatRequest{
+		t := true
+		req := api.ChatRequest{
 			Model:    o.model,
 			Messages: msgs,
-			Stream:   true,
-			Options: ollamaChatRequestOption{
-				Temperature: o.temperature,
+			Stream:   &t,
+			Options: map[string]interface{}{
+				"temperature": o.temperature,
 			},
 		}
 
-		jsonBody, err := json.Marshal(reqBody)
-		if err != nil {
+		if err := o.client.Chat(ctx, &req, func(res api.ChatResponse) error {
 			responseChan <- llmResponse{
-				err: fmt.Errorf("error marshaling request: %w", err),
+				content: res.Message.Content,
 			}
-			return
-		}
 
-		req, err := http.NewRequestWithContext(ctx, "POST", o.host+"/api/chat", bytes.NewBuffer(jsonBody))
-		if err != nil {
-			responseChan <- llmResponse{
-				err: fmt.Errorf("error creating request: %w", err),
-			}
-			return
-		}
-
-		req.Header.Set("Content-Type", "application/json")
-
-		resp, err := o.client.Do(req)
-		if err != nil {
+			return nil
+		}); err != nil {
 			if errors.Is(err, context.Canceled) {
 				return
 			}
@@ -177,40 +102,6 @@ func (o ollama) chatStream(ctx context.Context, chats []chat) <-chan llmResponse
 				err: fmt.Errorf("error sending request: %w", err),
 			}
 			return
-		}
-		defer resp.Body.Close()
-
-		if resp.StatusCode != http.StatusOK {
-			body, _ := io.ReadAll(resp.Body)
-			responseChan <- llmResponse{
-				err: fmt.Errorf("unexpected status code: %d, body: %s", resp.StatusCode, string(body)),
-			}
-			return
-		}
-
-		decoder := json.NewDecoder(resp.Body)
-		for {
-			var streamResp ollamaChatResponse
-			if err := decoder.Decode(&streamResp); err != nil {
-				if err == io.EOF {
-					return
-				}
-				if errors.Is(err, context.Canceled) {
-					return
-				}
-				responseChan <- llmResponse{
-					err: fmt.Errorf("error decoding response: %w", err),
-				}
-				return
-			}
-
-			responseChan <- llmResponse{
-				content: streamResp.Message.Content,
-			}
-
-			if streamResp.Done {
-				return
-			}
 		}
 	}()
 
@@ -227,58 +118,28 @@ func (o ollama) embeddingFunc() chromem.EmbeddingFunc {
 	checkNormalized := sync.Once{}
 
 	return func(ctx context.Context, text string) ([]float32, error) {
-		// Prepare the request body.
-		reqBody, err := json.Marshal(map[string]string{
-			"model": o.model,
-			"input": text, // new ollama API uses "input" instead of "prompt"
-		})
-		if err != nil {
-			return nil, fmt.Errorf("couldn't marshal request body: %w", err)
+		req := api.EmbedRequest{
+			Model: o.model,
+			Input: text,
 		}
-
-		// Create the request. Creating it with context is important for a timeout
-		// to be possible, because the client is configured without a timeout.
-		// Newer ollama API uses /embed instead of /embeddings.
-		req, err := http.NewRequestWithContext(ctx, "POST", o.host+"/api/embed", bytes.NewBuffer(reqBody))
-		if err != nil {
-			return nil, fmt.Errorf("couldn't create request: %w", err)
-		}
-		req.Header.Set("Content-Type", "application/json")
 
 		// Send the request.
-		resp, err := o.client.Do(req)
+		resp, err := o.client.Embed(ctx, &req)
 		if err != nil {
 			return nil, fmt.Errorf("couldn't send request: %w", err)
 		}
-		defer resp.Body.Close()
-
-		// Check the response status.
-		if resp.StatusCode != http.StatusOK {
-			return nil, errors.New("error response from the embedding API: " + resp.Status)
-		}
-
-		// Read and decode the response body.
-		body, err := io.ReadAll(resp.Body)
-		if err != nil {
-			return nil, fmt.Errorf("couldn't read response body: %w", err)
-		}
-		var embeddingResponse ollamaEmbedResponse
-		err = json.Unmarshal(body, &embeddingResponse)
-		if err != nil {
-			return nil, fmt.Errorf("couldn't unmarshal response body: %w", err)
-		}
 
 		// Check if the response contains embeddings.
-		if len(embeddingResponse.Embeddings) == 0 {
+		if len(resp.Embeddings) == 0 {
 			return nil, errors.New("no embeddings found in the response")
 		}
 		// In the newer ollama API, the request can take multiple inputs, and the response can contain multiple embeddings.
 		// We only want the first embedding, so we take the first element of the array.
-		if len(embeddingResponse.Embeddings[0]) == 0 {
+		if len(resp.Embeddings[0]) == 0 {
 			return nil, errors.New("no embeddings found in the response")
 		}
 
-		v := embeddingResponse.Embeddings[0]
+		v := resp.Embeddings[0]
 		checkNormalized.Do(func() {
 			if isNormalized(v) {
 				checkedNormalized = true
@@ -314,30 +175,19 @@ func (ollamaProvider) name() string {
 }
 
 func (o ollamaProvider) availableModels() []string {
-	req, err := http.NewRequest("GET", o.Host+"/api/tags", nil)
+	u, err := url.Parse(o.Host)
+	if err != nil {
+		return []string{}
+	}
+	client := api.NewClient(u, &http.Client{})
+
+	resp, err := client.List(context.Background())
 	if err != nil {
 		return []string{}
 	}
 
-	client := &http.Client{}
-
-	resp, err := client.Do(req)
-	if err != nil {
-		return []string{}
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		return []string{}
-	}
-
-	var response ollamaModelsResponse
-	if err := json.NewDecoder(resp.Body).Decode(&response); err != nil {
-		return []string{}
-	}
-
-	models := make([]string, len(response.Models))
-	for i, model := range response.Models {
+	models := make([]string, len(resp.Models))
+	for i, model := range resp.Models {
 		models[i] = model.Name
 	}
 
@@ -400,11 +250,16 @@ func (o ollamaProvider) saveForm(db *bolt.DB, form *huh.Form) (llmProvider, bool
 }
 
 func (o ollamaProvider) new(setting llmSetting) llm {
+	u, err := url.Parse(o.Host)
+	if err != nil {
+		panic(err)
+	}
+
 	return ollama{
 		host:        o.Host,
 		model:       setting.Model,
 		temperature: setting.Temperature,
-		client:      &http.Client{},
+		client:      api.NewClient(u, &http.Client{}),
 	}
 }
 
@@ -413,10 +268,14 @@ func (o ollamaProvider) supportEmbedding() bool {
 }
 
 func (o ollamaProvider) newEmbedder(setting llmSetting) embedder {
+	u, err := url.Parse(o.Host)
+	if err != nil {
+		panic(err)
+	}
 	return ollama{
 		host:        o.Host,
 		model:       setting.Model,
 		temperature: setting.Temperature,
-		client:      &http.Client{},
+		client:      api.NewClient(u, &http.Client{}),
 	}
 }
