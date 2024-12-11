@@ -151,11 +151,11 @@ func (m mainModel) selectOption(index int) (mainModel, tea.Cmd) {
 	case optionProvidersTitle:
 		return m.setViewState(viewStateProviders).updateProvidersSize(), nil
 	case optionConvoLLMTitle:
-		return m.setViewState(viewStateConvoLLMForm).updateConvoLLMFormSize().newConvoLLMForm()
+		return m.setViewState(viewStateConvoLLMForm).updateFormSize().newConvoLLMForm()
 	case optionGenTitleLLMTitle:
-		return m.setViewState(viewStateGenTitleLLMForm).updateGenTitleLLMFormSize().newGenTitleLLMForm()
+		return m.setViewState(viewStateGenTitleLLMForm).updateFormSize().newGenTitleLLMForm()
 	case optionEmbedderTitle:
-		return m.setViewState(viewStateEmbedderLLMForm).updateEmbedderLLMFormSize().newEmbedderLLMForm()
+		return m.setViewState(viewStateEmbedderLLMForm).updateFormSize().newEmbedderLLMForm()
 	}
 	return m, nil
 }

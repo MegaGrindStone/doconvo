@@ -124,7 +124,7 @@ func (m mainModel) selectProvider(index int) (mainModel, tea.Cmd) {
 	m.selectedProviderIndex = index
 
 	return m.setViewState(viewStateProviderForm).
-		updateProviderFormSize().
+		updateFormSize().
 		newProviderForm()
 }
 
@@ -136,24 +136,10 @@ func (m mainModel) newProviderForm() (mainModel, tea.Cmd) {
 	return m, m.providerForm.PrevField()
 }
 
-func (m mainModel) updateProviderFormSize() mainModel {
-	titleHeight := lipgloss.Height(titleStyle.Render(""))
-	height := m.height - logoHeight() - titleHeight
-
-	if m.err != nil {
-		height -= errHeight(m.width, m.err)
-	}
-
-	m.formWidth = m.width
-	m.formHeight = height
-
-	return m
-}
-
 func (m mainModel) handleProviderFormEvents(msg tea.Msg) (mainModel, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.WindowSizeMsg:
-		m = m.updateProviderFormSize()
+		m = m.updateFormSize()
 	case tea.KeyMsg:
 		if key.Matches(msg, m.keymap.escape) {
 			return m.setViewState(viewStateProviders), nil
@@ -172,7 +158,7 @@ func (m mainModel) handleProviderFormEvents(msg tea.Msg) (mainModel, tea.Cmd) {
 	provider, confirmed, err := m.providers[m.selectedProviderIndex].saveForm(m.db, m.providerForm)
 	if err != nil {
 		m.err = fmt.Errorf("error saving provider settings: %w", err)
-		return m.updateProviderFormSize(), nil
+		return m.updateFormSize(), nil
 	}
 
 	if !confirmed {

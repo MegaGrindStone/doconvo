@@ -374,6 +374,7 @@ func (o ollamaProvider) form(width, height int, keymap *huh.KeyMap) *huh.Form {
 	).
 		WithWidth(width).
 		WithHeight(height).
+		WithTheme(huh.ThemeCatppuccin()).
 		WithKeyMap(keymap).
 		WithShowErrors(true).
 		WithShowHelp(true)

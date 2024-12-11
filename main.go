@@ -313,3 +313,18 @@ func (m mainModel) setViewState(state viewState) mainModel {
 
 	return m
 }
+
+func (m mainModel) updateFormSize() mainModel {
+	titleHeight := lipgloss.Height(titleStyle.Render(""))
+	// This -1 is for compensate the built-in form help view?
+	height := m.height - logoHeight() - titleHeight - 1
+
+	if m.err != nil {
+		height -= errHeight(m.width, m.err)
+	}
+
+	m.formWidth = m.width
+	m.formHeight = height
+
+	return m
+}

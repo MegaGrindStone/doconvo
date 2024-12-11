@@ -31,6 +31,8 @@ func defaultList(title string, km keymap, shortHelps, fullHelps func() []key.Bin
 	l := list.New([]list.Item{}, listDelegate(), 0, 0)
 	l.Title = title
 	l.Styles.Title = titleStyle
+	// Remove horizontal padding from the title bar for consistency.
+	l.Styles.TitleBar = lipgloss.NewStyle()
 	l.DisableQuitKeybindings()
 
 	l.AdditionalShortHelpKeys = shortHelps

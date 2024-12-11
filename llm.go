@@ -189,6 +189,7 @@ func (m mainModel) newLLMForm(setting llmSetting, isEmbedding bool, defaultTempe
 	).
 		WithWidth(m.formWidth).
 		WithHeight(m.formHeight).
+		WithTheme(huh.ThemeCatppuccin()).
 		WithKeyMap(m.keymap.formKeymap).
 		WithShowErrors(true).
 		WithShowHelp(true)
@@ -214,24 +215,10 @@ func (m mainModel) newConvoLLMForm() (mainModel, tea.Cmd) {
 	return m, m.convoLLMForm.PrevField()
 }
 
-func (m mainModel) updateConvoLLMFormSize() mainModel {
-	titleHeight := lipgloss.Height(titleStyle.Render(""))
-	height := m.height - logoHeight() - titleHeight
-
-	if m.err != nil {
-		height -= errHeight(m.width, m.err)
-	}
-
-	m.formWidth = m.width
-	m.formHeight = height
-
-	return m
-}
-
 func (m mainModel) handleConvoLLMFormEvents(msg tea.Msg) (mainModel, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.WindowSizeMsg:
-		m = m.updateConvoLLMFormSize()
+		m = m.updateFormSize()
 	case tea.KeyMsg:
 		if key.Matches(msg, m.keymap.escape) {
 			return m.setViewState(viewStateOptions), nil
@@ -262,13 +249,13 @@ func (m mainModel) handleConvoLLMFormEvents(msg tea.Msg) (mainModel, tea.Cmd) {
 
 	if err := saveLLMSettings(m.db, roleConvo, m.convoLLMSetting); err != nil {
 		m.err = fmt.Errorf("error saving convo llm settings: %w", err)
-		return m.updateConvoLLMFormSize(), nil
+		return m.updateFormSize(), nil
 	}
 
 	m, err = m.refreshRAG()
 	if err != nil {
 		m.err = fmt.Errorf("error refreshing rag: %w", err)
-		return m.updateConvoLLMFormSize(), nil
+		return m.updateFormSize(), nil
 	}
 
 	return m.initOptions().updateOptionsSize().setViewState(viewStateOptions), nil
@@ -288,24 +275,10 @@ func (m mainModel) newGenTitleLLMForm() (mainModel, tea.Cmd) {
 	return m, m.genTitleLLMForm.PrevField()
 }
 
-func (m mainModel) updateGenTitleLLMFormSize() mainModel {
-	titleHeight := lipgloss.Height(titleStyle.Render(""))
-	height := m.height - logoHeight() - titleHeight
-
-	if m.err != nil {
-		height -= errHeight(m.width, m.err)
-	}
-
-	m.formWidth = m.width
-	m.formHeight = height
-
-	return m
-}
-
 func (m mainModel) handleGenTitleLLMFormEvents(msg tea.Msg) (mainModel, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.WindowSizeMsg:
-		m = m.updateGenTitleLLMFormSize()
+		m = m.updateFormSize()
 	case tea.KeyMsg:
 		if key.Matches(msg, m.keymap.escape) {
 			return m.setViewState(viewStateOptions), nil
@@ -336,13 +309,13 @@ func (m mainModel) handleGenTitleLLMFormEvents(msg tea.Msg) (mainModel, tea.Cmd)
 
 	if err := saveLLMSettings(m.db, roleTitleGen, m.genTitleLLMSetting); err != nil {
 		m.err = fmt.Errorf("error saving gen title llm settings: %w", err)
-		return m.updateGenTitleLLMFormSize(), nil
+		return m.updateFormSize(), nil
 	}
 
 	m, err = m.refreshRAG()
 	if err != nil {
 		m.err = fmt.Errorf("error refreshing rag: %w", err)
-		return m.updateGenTitleLLMFormSize(), nil
+		return m.updateFormSize(), nil
 	}
 
 	return m.initOptions().updateOptionsSize().setViewState(viewStateOptions), nil
@@ -362,24 +335,10 @@ func (m mainModel) newEmbedderLLMForm() (mainModel, tea.Cmd) {
 	return m, m.embedderLLMForm.PrevField()
 }
 
-func (m mainModel) updateEmbedderLLMFormSize() mainModel {
-	titleHeight := lipgloss.Height(titleStyle.Render(""))
-	height := m.height - logoHeight() - titleHeight
-
-	if m.err != nil {
-		height -= errHeight(m.width, m.err)
-	}
-
-	m.formWidth = m.width
-	m.formHeight = height
-
-	return m
-}
-
 func (m mainModel) handleEmbedderLLMFormEvents(msg tea.Msg) (mainModel, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.WindowSizeMsg:
-		m = m.updateEmbedderLLMFormSize()
+		m = m.updateFormSize()
 	case tea.KeyMsg:
 		if key.Matches(msg, m.keymap.escape) {
 			return m.setViewState(viewStateOptions), nil
@@ -405,14 +364,14 @@ func (m mainModel) handleEmbedderLLMFormEvents(msg tea.Msg) (mainModel, tea.Cmd)
 
 	if err := saveLLMSettings(m.db, roleEmbedder, m.embedderLLMSetting); err != nil {
 		m.err = fmt.Errorf("error saving embedder llm settings: %w", err)
-		return m.updateEmbedderLLMFormSize(), nil
+		return m.updateFormSize(), nil
 	}
 
 	var err error
 	m, err = m.refreshRAG()
 	if err != nil {
 		m.err = fmt.Errorf("error refreshing rag: %w", err)
-		return m.updateEmbedderLLMFormSize(), nil
+		return m.updateFormSize(), nil
 	}
 
 	return m.initOptions().updateOptionsSize().setViewState(viewStateOptions), nil

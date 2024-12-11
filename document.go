@@ -135,7 +135,7 @@ func (m mainModel) selectDocument(index int) (mainModel, tea.Cmd) {
 	m.selectedDocumentIndex = index
 
 	return m.setViewState(viewStateDocumentForm).
-		updateDocumentFormSize().
+		updateFormSize().
 		newDocumentForm()
 }
 
@@ -194,6 +194,7 @@ func (m mainModel) newDocumentForm() (mainModel, tea.Cmd) {
 	).
 		WithWidth(m.formWidth).
 		WithHeight(m.formHeight).
+		WithTheme(huh.ThemeCatppuccin()).
 		WithKeyMap(m.keymap.formKeymap).
 		WithShowErrors(true).
 		WithShowHelp(true)
@@ -201,24 +202,10 @@ func (m mainModel) newDocumentForm() (mainModel, tea.Cmd) {
 	return m, m.documentForm.PrevField()
 }
 
-func (m mainModel) updateDocumentFormSize() mainModel {
-	titleHeight := lipgloss.Height(titleStyle.Render(""))
-	height := m.height - logoHeight() - titleHeight
-
-	if m.err != nil {
-		height -= errHeight(m.width, m.err)
-	}
-
-	m.formWidth = m.width
-	m.formHeight = height
-
-	return m
-}
-
 func (m mainModel) handleDocumentFormEvents(msg tea.Msg) (mainModel, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.WindowSizeMsg:
-		m = m.updateDocumentFormSize()
+		m = m.updateFormSize()
 	case tea.KeyMsg:
 		if key.Matches(msg, m.keymap.escape) {
 			return m.setViewState(viewStateDocuments), nil
@@ -244,7 +231,7 @@ func (m mainModel) handleDocumentFormEvents(msg tea.Msg) (mainModel, tea.Cmd) {
 
 	if err := saveDocument(m.db, &selectedDocument); err != nil {
 		m.err = fmt.Errorf("error creating new document: %w", err)
-		return m.updateDocumentFormSize(), nil
+		return m.updateFormSize(), nil
 	}
 
 	m.documents[m.selectedDocumentIndex] = selectedDocument
