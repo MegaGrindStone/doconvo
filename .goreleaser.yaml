@@ -27,15 +27,20 @@ archives:
       - goos: windows
         format: zip
 
+changelog:
+  disable: true
+
 brews:
   - name: doconvo
     homepage: "https://github.com/MegaGrindStone/doconvo"
     description: "Document conversation assistant with RAG capabilities"
+    directory: Formula
     repository:
       owner: MegaGrindStone
       name: homebrew-tap
-    install: |
-      bin.install "doconvo"
+    commit_author:
+      name: goreleaserbot
+      email: bot@goreleaser.com
 
 checksum:
   name_template: 'checksums.txt'
