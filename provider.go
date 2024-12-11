@@ -12,7 +12,8 @@ import (
 )
 
 type llmProvider interface {
-	availableModels() ([]string, error)
+	name() string
+	availableModels() []string
 	isConfigured() bool
 
 	form(int, int, *huh.KeyMap) *huh.Form
@@ -21,6 +22,11 @@ type llmProvider interface {
 	Title() string
 	Description() string
 	list.Item
+
+	new(llmSetting) llm
+
+	supportEmbedding() bool
+	newEmbedder(llmSetting) embedder
 }
 
 const (

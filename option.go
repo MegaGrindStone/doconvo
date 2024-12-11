@@ -13,28 +13,71 @@ type optionItem struct {
 }
 
 const (
-	optionDocumentsTitle = "Documents"
-	optionProvidersTitle = "Providers"
+	optionDocumentsTitle   = "Documents"
+	optionProvidersTitle   = "Providers"
+	optionConvoLLMTitle    = "Convo LLM"
+	optionGenTitleLLMTitle = "Generate Title LLM"
+	optionEmbedderTitle    = "Embedder LLM"
 )
 
-var optionItems = []optionItem{
+var llmOptionItems = []optionItem{
 	{
-		title:       optionDocumentsTitle,
-		description: "Manages the documents you want to have convo with",
+		title:       optionConvoLLMTitle,
+		description: "The LLM to use for the conversation",
 	},
 	{
-		title:       optionProvidersTitle,
-		description: "Manages the LLM providers you want to use",
+		title:       optionGenTitleLLMTitle,
+		description: "The LLM to use for generating the title",
+	},
+	{
+		title:       optionEmbedderTitle,
+		description: "The LLM to use for embedding the document",
 	},
 }
 
 func (m mainModel) initOptions() mainModel {
-	items := make([]list.Item, len(optionItems))
-	for i, item := range optionItems {
+	m.options = make([]optionItem, 0)
+
+	if m.embedderLLMSetting.isConfigured() {
+		m.options = append(m.options, optionItem{
+			title:       optionDocumentsTitle,
+			description: "Manages the documents you want to have convo with",
+		})
+	}
+	m.options = append(m.options, optionItem{
+		title:       optionProvidersTitle,
+		description: "Manages the LLM providers you want to use",
+	})
+
+	if m.providersIsConfigured() {
+		m.options = append(m.options, llmOptionItems...)
+	}
+
+	items := make([]list.Item, len(m.options))
+	for i, item := range m.options {
 		it := item
 
-		if item.title == optionProvidersTitle {
+		switch item.title {
+		case optionProvidersTitle:
 			if m.providersIsConfigured() {
+				it.title += " (configured)"
+			} else {
+				it.title += " (not configured)"
+			}
+		case optionConvoLLMTitle:
+			if m.convoLLMSetting.isConfigured() {
+				it.title += " (configured)"
+			} else {
+				it.title += " (not configured)"
+			}
+		case optionGenTitleLLMTitle:
+			if m.genTitleLLMSetting.isConfigured() {
+				it.title += " (configured)"
+			} else {
+				it.title += " (not configured)"
+			}
+		case optionEmbedderTitle:
+			if m.embedderLLMSetting.isConfigured() {
 				it.title += " (configured)"
 			} else {
 				it.title += " (not configured)"
@@ -79,7 +122,7 @@ func (m mainModel) handleOptionsEvents(msg tea.Msg) (mainModel, tea.Cmd) {
 	case tea.KeyMsg:
 		switch {
 		case key.Matches(msg, m.keymap.escape):
-			if !m.providersIsConfigured() {
+			if !m.providersIsConfigured() || !m.llmIsConfigured() {
 				return m, nil
 			}
 			return m.setViewState(viewStateSessions).updateSessionsSize(), nil
@@ -100,13 +143,19 @@ func (m mainModel) optionsView() string {
 }
 
 func (m mainModel) selectOption(index int) (mainModel, tea.Cmd) {
-	option := optionItems[index]
+	option := m.options[index]
 
 	switch option.title {
 	case optionDocumentsTitle:
 		return m.setViewState(viewStateDocuments).updateDocumentsSize(), nil
 	case optionProvidersTitle:
 		return m.setViewState(viewStateProviders).updateProvidersSize(), nil
+	case optionConvoLLMTitle:
+		return m.setViewState(viewStateConvoLLMForm).updateConvoLLMFormSize().newConvoLLMForm()
+	case optionGenTitleLLMTitle:
+		return m.setViewState(viewStateGenTitleLLMForm).updateGenTitleLLMFormSize().newGenTitleLLMForm()
+	case optionEmbedderTitle:
+		return m.setViewState(viewStateEmbedderLLMForm).updateEmbedderLLMFormSize().newEmbedderLLMForm()
 	}
 	return m, nil
 }

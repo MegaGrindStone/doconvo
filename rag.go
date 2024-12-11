@@ -466,3 +466,28 @@ func (r *rag) storeDocument(ctx context.Context, doc document, documents <-chan 
 		lastScanTime:     time.Now(),
 	}
 }
+
+func (m mainModel) refreshRAG() (mainModel, error) {
+	if !m.llmIsConfigured() {
+		return m, nil
+	}
+
+	convo, err := llmFromSetting(m.convoLLMSetting, m.providers)
+	if err != nil {
+		return mainModel{}, fmt.Errorf("failed to load convo llm: %w", err)
+	}
+
+	genTitle, err := llmFromSetting(m.genTitleLLMSetting, m.providers)
+	if err != nil {
+		return mainModel{}, fmt.Errorf("failed to load title gen llm: %w", err)
+	}
+
+	embedder, err := embedderFromSetting(m.embedderLLMSetting, m.providers)
+	if err != nil {
+		return mainModel{}, fmt.Errorf("failed to load embedder llm: %w", err)
+	}
+
+	m.rag = newRAG(m.vectordb, convo, genTitle, embedder)
+
+	return m, nil
+}

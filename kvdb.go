@@ -8,9 +8,10 @@ import (
 )
 
 const (
-	sessionsBucket    = "sessions"
-	documentsBucket   = "documents"
-	llmSettingsBucket = "llmSettings"
+	sessionsBucket            = "sessions"
+	documentsBucket           = "documents"
+	llmProviderSettingsBucket = "llmProviderSettings"
+	llmSettingsBucket         = "llmSettings"
 )
 
 func initKVDB(db *bolt.DB) error {
@@ -20,6 +21,10 @@ func initKVDB(db *bolt.DB) error {
 			return err
 		}
 		_, err = tx.CreateBucketIfNotExists([]byte(documentsBucket))
+		if err != nil {
+			return err
+		}
+		_, err = tx.CreateBucketIfNotExists([]byte(llmProviderSettingsBucket))
 		if err != nil {
 			return err
 		}
@@ -124,7 +129,7 @@ func loadOllamaSettings(db *bolt.DB) (ollamaProvider, error) {
 	var ollama ollamaProvider
 
 	err := db.View(func(tx *bolt.Tx) error {
-		b := tx.Bucket([]byte(llmSettingsBucket))
+		b := tx.Bucket([]byte(llmProviderSettingsBucket))
 
 		data := b.Get([]byte("ollama"))
 		if data == nil {
@@ -144,7 +149,7 @@ func loadOllamaSettings(db *bolt.DB) (ollamaProvider, error) {
 
 func saveOllamaSettings(db *bolt.DB, ollama ollamaProvider) error {
 	return db.Update(func(tx *bolt.Tx) error {
-		b := tx.Bucket([]byte(llmSettingsBucket))
+		b := tx.Bucket([]byte(llmProviderSettingsBucket))
 
 		data, err := json.Marshal(ollama)
 		if err != nil {
@@ -159,7 +164,7 @@ func loadAnthropicSettings(db *bolt.DB) (anthropicProvider, error) {
 	var anthro anthropicProvider
 
 	err := db.View(func(tx *bolt.Tx) error {
-		b := tx.Bucket([]byte(llmSettingsBucket))
+		b := tx.Bucket([]byte(llmProviderSettingsBucket))
 
 		data := b.Get([]byte("anthropic"))
 		if data == nil {
@@ -179,7 +184,7 @@ func loadAnthropicSettings(db *bolt.DB) (anthropicProvider, error) {
 
 func saveAnthropicSettings(db *bolt.DB, anthro anthropicProvider) error {
 	return db.Update(func(tx *bolt.Tx) error {
-		b := tx.Bucket([]byte(llmSettingsBucket))
+		b := tx.Bucket([]byte(llmProviderSettingsBucket))
 
 		data, err := json.Marshal(anthro)
 		if err != nil {
@@ -187,6 +192,41 @@ func saveAnthropicSettings(db *bolt.DB, anthro anthropicProvider) error {
 		}
 
 		return b.Put([]byte("anthropic"), data)
+	})
+}
+
+func loadLLMSettings(db *bolt.DB, roles string) (llmSetting, error) {
+	var llm llmSetting
+
+	err := db.View(func(tx *bolt.Tx) error {
+		b := tx.Bucket([]byte(llmSettingsBucket))
+
+		data := b.Get([]byte(roles))
+		if data == nil {
+			return nil
+		}
+
+		err := json.Unmarshal(data, &llm)
+		if err != nil {
+			return err
+		}
+
+		return nil
+	})
+
+	return llm, err
+}
+
+func saveLLMSettings(db *bolt.DB, roles string, llm llmSetting) error {
+	return db.Update(func(tx *bolt.Tx) error {
+		b := tx.Bucket([]byte(llmSettingsBucket))
+
+		data, err := json.Marshal(llm)
+		if err != nil {
+			return err
+		}
+
+		return b.Put([]byte(roles), data)
 	})
 }
 

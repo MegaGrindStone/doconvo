@@ -24,8 +24,9 @@ import (
 )
 
 type mainModel struct {
-	db  *bolt.DB
-	rag *rag
+	db       *bolt.DB
+	vectordb *chromem.DB
+	rag      *rag
 
 	llmResponses           chan llmResponseMsg
 	chatCancelFunc         context.CancelFunc
@@ -48,17 +49,25 @@ type mainModel struct {
 	providersList list.Model
 	providerForm  *huh.Form
 
+	convoLLMForm    *huh.Form
+	genTitleLLMForm *huh.Form
+	embedderLLMForm *huh.Form
+
 	helpModel help.Model
 
 	sessions              []session
 	selectedSessionIndex  int
 	chatIsThinking        bool
+	options               []optionItem
 	documents             []document
 	selectedDocumentIndex int
 	documentScanLogs      []string
 	documentScanStartTime time.Time
 	providers             []llmProvider
 	selectedProviderIndex int
+	convoLLMSetting       llmSetting
+	genTitleLLMSetting    llmSetting
+	embedderLLMSetting    llmSetting
 
 	keymap     keymap
 	width      int
@@ -81,6 +90,9 @@ const (
 	viewStateDocumentScan
 	viewStateProviders
 	viewStateProviderForm
+	viewStateConvoLLMForm
+	viewStateGenTitleLLMForm
+	viewStateEmbedderLLMForm
 )
 
 func initLogger(cfgPath string) error {
@@ -163,7 +175,8 @@ func main() {
 
 func newMainModel(db *bolt.DB, vectordb *chromem.DB) (mainModel, error) {
 	m := mainModel{
-		db: db,
+		db:       db,
+		vectordb: vectordb,
 	}
 
 	var err error
@@ -173,14 +186,20 @@ func newMainModel(db *bolt.DB, vectordb *chromem.DB) (mainModel, error) {
 		return mainModel{}, fmt.Errorf("failed to load llm providers: %w", err)
 	}
 
+	m, err = m.initLLMSettings()
+	if err != nil {
+		return mainModel{}, fmt.Errorf("failed to load llm settings: %w", err)
+	}
+
 	m.viewState = viewStateSessions
-	if !m.providersIsConfigured() {
+	if !m.providersIsConfigured() || !m.llmIsConfigured() {
 		m.viewState = viewStateOptions
 	}
 
-	llms := loadLLM()
-	embedder := loadEmbedder()
-	m.rag = newRAG(vectordb, llms[convoName], llms[titleGenName], embedder)
+	m, err = m.refreshRAG()
+	if err != nil {
+		return m, fmt.Errorf("failed to refresh rag: %w", err)
+	}
 
 	m.keymap = newKeymap()
 
@@ -240,6 +259,12 @@ func (m mainModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m, cmd = m.handleProvidersEvents(msg)
 	case viewStateProviderForm:
 		m, cmd = m.handleProviderFormEvents(msg)
+	case viewStateConvoLLMForm:
+		m, cmd = m.handleConvoLLMFormEvents(msg)
+	case viewStateGenTitleLLMForm:
+		m, cmd = m.handleGenTitleLLMFormEvents(msg)
+	case viewStateEmbedderLLMForm:
+		m, cmd = m.handleEmbedderLLMFormEvents(msg)
 	}
 
 	return m, cmd
@@ -265,6 +290,12 @@ func (m mainModel) View() string {
 		vs = append(vs, m.providersView())
 	case viewStateProviderForm:
 		vs = append(vs, m.providerFormView())
+	case viewStateConvoLLMForm:
+		vs = append(vs, m.convoLLMFormView())
+	case viewStateGenTitleLLMForm:
+		vs = append(vs, m.genTitleLLMFormView())
+	case viewStateEmbedderLLMForm:
+		vs = append(vs, m.embedderLLMFormView())
 	default:
 		m.err = fmt.Errorf("unknown view state %d", m.viewState)
 	}

@@ -61,15 +61,6 @@ const (
 	anthropicAPIEndpoint = "https://api.anthropic.com/v1"
 )
 
-func newAnthropic(apiKey string, model string, temperature float64) anthropic {
-	return anthropic{
-		apiKey:      apiKey,
-		model:       model,
-		temperature: temperature,
-		client:      &http.Client{},
-	}
-}
-
 func (a anthropic) chat(ctx context.Context, chats []chat) llmResponse {
 	systemChat, cs := extractSystemChat(chats)
 
@@ -275,23 +266,18 @@ func (a anthropicProvider) FilterValue() string {
 	return providerAnthropic
 }
 
-func (a anthropicProvider) new(model string, temperature float64) anthropic {
-	return anthropic{
-		apiKey:      a.APIKey,
-		model:       model,
-		temperature: temperature,
-		client:      &http.Client{},
-	}
+func (a anthropicProvider) name() string {
+	return providerAnthropic
 }
 
-func (a anthropicProvider) availableModels() ([]string, error) {
+func (a anthropicProvider) availableModels() []string {
 	return []string{
 		"claude-3-5-sonnet-20241022",
 		"claude-3-5-haiku-20241022",
 		"claude-3-opus-20240229",
 		"claude-3-sonnet-20240229",
 		"claude-3-haiku-20240307",
-	}, nil
+	}
 }
 
 func (a anthropicProvider) isConfigured() bool {
@@ -344,4 +330,21 @@ func (a anthropicProvider) saveForm(db *bolt.DB, form *huh.Form) (llmProvider, b
 	}
 
 	return a, true, nil
+}
+
+func (a anthropicProvider) new(setting llmSetting) llm {
+	return anthropic{
+		apiKey:      a.APIKey,
+		model:       setting.Model,
+		temperature: setting.Temperature,
+		client:      &http.Client{},
+	}
+}
+
+func (a anthropicProvider) supportEmbedding() bool {
+	return false
+}
+
+func (a anthropicProvider) newEmbedder(setting llmSetting) embedder {
+	return nil
 }

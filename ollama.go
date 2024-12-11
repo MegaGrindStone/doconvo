@@ -66,19 +66,6 @@ const (
 	defaultOllamaHost = "http://127.0.0.1:11434"
 )
 
-func newOllama(model string, temperature float64) *ollama {
-	host := os.Getenv("OLLAMA_HOST")
-	if host == "" {
-		host = defaultOllamaHost
-	}
-	return &ollama{
-		host:        host,
-		client:      &http.Client{},
-		model:       model,
-		temperature: temperature,
-	}
-}
-
 func (o ollama) chat(ctx context.Context, chats []chat) llmResponse {
 	msgs := make([]ollamaChatMessage, len(chats))
 	for i, chat := range chats {
@@ -322,37 +309,31 @@ func (o ollamaProvider) FilterValue() string {
 	return providerOllama
 }
 
-func (o ollamaProvider) new(model string, temperature float64) ollama {
-	return ollama{
-		host:        o.Host,
-		model:       model,
-		temperature: temperature,
-		client:      &http.Client{},
-	}
+func (ollamaProvider) name() string {
+	return providerOllama
 }
 
-func (o ollamaProvider) availableModels() ([]string, error) {
+func (o ollamaProvider) availableModels() []string {
 	req, err := http.NewRequest("GET", o.Host+"/api/tags", nil)
 	if err != nil {
-		return nil, fmt.Errorf("error creating request: %w", err)
+		return []string{}
 	}
 
 	client := &http.Client{}
 
 	resp, err := client.Do(req)
 	if err != nil {
-		return nil, fmt.Errorf("error sending request: %w", err)
+		return []string{}
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		body, _ := io.ReadAll(resp.Body)
-		return nil, fmt.Errorf("unexpected status code: %d, body: %s", resp.StatusCode, string(body))
+		return []string{}
 	}
 
 	var response ollamaModelsResponse
 	if err := json.NewDecoder(resp.Body).Decode(&response); err != nil {
-		return nil, fmt.Errorf("error decoding response: %w", err)
+		return []string{}
 	}
 
 	models := make([]string, len(response.Models))
@@ -360,7 +341,7 @@ func (o ollamaProvider) availableModels() ([]string, error) {
 		models[i] = model.Name
 	}
 
-	return models, nil
+	return models
 }
 
 func (o ollamaProvider) isConfigured() bool {
@@ -415,4 +396,26 @@ func (o ollamaProvider) saveForm(db *bolt.DB, form *huh.Form) (llmProvider, bool
 	}
 
 	return o, true, nil
+}
+
+func (o ollamaProvider) new(setting llmSetting) llm {
+	return ollama{
+		host:        o.Host,
+		model:       setting.Model,
+		temperature: setting.Temperature,
+		client:      &http.Client{},
+	}
+}
+
+func (o ollamaProvider) supportEmbedding() bool {
+	return true
+}
+
+func (o ollamaProvider) newEmbedder(setting llmSetting) embedder {
+	return ollama{
+		host:        o.Host,
+		model:       setting.Model,
+		temperature: setting.Temperature,
+		client:      &http.Client{},
+	}
 }
